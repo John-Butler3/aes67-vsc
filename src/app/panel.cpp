@@ -284,30 +284,51 @@ static void bridge_toggle(HWND dlg) {
 }
 static void teams_preset(HWND dlg) {
     g_devs = bridge_list_devices();
-    std::string cable, cable_a;
-    for (auto& d : g_devs) if (d.render) { if (lower(d.name).find("cable input") != std::string::npos && lower(d.name).find("cable-a") == std::string::npos) cable = d.name; if (lower(d.name).find("cable-a input") != std::string::npos) cable_a = d.name; }
-    if (cable.empty()) {
-        if (MessageBoxA(dlg, "The free VB-CABLE virtual cable is not installed. Teams can only use Windows audio devices, so it is needed as the\n"
-                             "\"microphone\" that carries the AES67 audio.\n\nOpen the VB-CABLE download page now? (install it, reboot once, then press Teams preset again)",
+    // Known virtual cables: VB-CABLE (free, one cable), VB-CABLE A/B (second cable), Voicemeeter (Banana has two virtual pairs).
+    std::string cable, cable_a, vm_in, vm_aux;
+    for (auto& d : g_devs) if (d.render) {
+        std::string l = lower(d.name);
+        if (l.find("cable input") != std::string::npos && l.find("cable-") == std::string::npos) cable = d.name;
+        if (l.find("cable-a input") != std::string::npos) cable_a = d.name;
+        if (l.find("voicemeeter input") != std::string::npos) vm_in = d.name;
+        if (l.find("voicemeeter aux input") != std::string::npos) vm_aux = d.name;
+    }
+    if (cable.empty() && vm_in.empty()) {
+        if (MessageBoxA(dlg, "No virtual audio cable is installed. Teams can only use Windows audio devices, so a virtual cable is needed as the\n"
+                             "\"microphone\" that carries the incoming AES67 stream (Windows cannot create one without a driver).\n\n"
+                             "Free: VB-CABLE (one cable: isolated incoming, outgoing = loopback of your speakers).\n"
+                             "Isolated in both directions: VB-CABLE plus VB-CABLE A+B, or Voicemeeter Banana (two virtual cables).\n\n"
+                             "Open the VB-Audio download page now? (install, reboot once, then press Teams preset again)",
                         kTitle, MB_YESNO | MB_ICONQUESTION) == IDYES)
             ShellExecuteA(dlg, "open", "https://vb-audio.com/Cable/", nullptr, nullptr, SW_SHOWNORMAL);
         return;
     }
     if (!ui_to_cfg(dlg, g_bridge_error)) { MessageBoxA(dlg, g_bridge_error.c_str(), kTitle, MB_OK | MB_ICONWARNING); return; }
-    g_cfg.bridge_play = cable;
-    g_cfg.bridge_source = cable_a.empty() ? "default" : cable_a;
+    std::string mic, spk, extra; bool isolated = true;
+    if (!cable.empty()) {
+        g_cfg.bridge_play = cable; mic = "CABLE Output (VB-Audio Virtual Cable)";
+        if (!cable_a.empty()) { g_cfg.bridge_source = cable_a; spk = cable_a; }
+        else if (!vm_aux.empty()) { g_cfg.bridge_source = vm_aux; spk = vm_aux; extra = "Voicemeeter must be running for its virtual devices to work.\n"; }
+        else { g_cfg.bridge_source = "default"; spk = "your normal speakers / headset (the default playback device)"; isolated = false; }
+    } else {
+        g_cfg.bridge_play = vm_in; mic = "Voicemeeter Output (VB-Audio Voicemeeter VAIO)";
+        extra = "Voicemeeter must be running. On its \"Voicemeeter VAIO\" strip enable B1 so the incoming audio reaches \"Voicemeeter Output\".\n";
+        if (!vm_aux.empty()) { g_cfg.bridge_source = vm_aux; spk = vm_aux; }
+        else { g_cfg.bridge_source = "default"; spk = "your normal speakers / headset (the default playback device)"; isolated = false; }
+    }
     g_cfg.bridge_loopback = true;
     g_cfg.bridge_autostart = true;
     g_cfg.save();
     load_to_ui(dlg);
     bridge_start(dlg);
-    std::string spk = cable_a.empty() ? "your normal speakers / headset (the default playback device)" : cable_a;
     std::string msg = "Bridge started for Teams.\n\nIn Teams > Settings > Devices choose:\n"
-                      "   Microphone:  CABLE Output (VB-Audio Virtual Cable)\n      = the stream received from the AES67 network, so the far end hears it\n"
-                      "   Speaker:     " + spk + "\n      = what Teams plays; it is transmitted to the AES67 network\n\n"
-                      "Tips: turn Teams noise suppression off (or Low) and enable High fidelity music mode for programme audio.\n"
-                      "Set both VB-CABLE endpoints to 2 channels / 48000 Hz in Windows Sound settings.\n"
-                      "The same settings work for Zoom, Meet and other apps.";
+                      "   Microphone:  " + mic + "\n      = the stream received from the AES67 network, so the far end hears it\n"
+                      "   Speaker:     " + spk + "\n      = what Teams plays; it is transmitted to the AES67 network\n\n" + extra;
+    if (isolated) msg += "Both directions are isolated: only the AES67 stream reaches Teams' microphone and only Teams' audio is transmitted.\n";
+    else msg += "Note: with a single cable the outgoing stream is the loopback of your speakers, so everything the PC plays is sent.\n"
+                "For an isolated outgoing stream add a second virtual cable (VB-CABLE A+B or Voicemeeter Banana) and press Teams preset again.\n";
+    msg += "Tips: turn Teams noise suppression off (or Low) and enable High fidelity music mode for programme audio.\n"
+           "Set the virtual cable endpoints to 2 channels / 48000 Hz in Windows Sound settings. The same settings work for Zoom and Meet.";
     MessageBoxA(dlg, msg.c_str(), kTitle, MB_OK | MB_ICONINFORMATION);
 }
 

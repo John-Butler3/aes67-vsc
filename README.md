@@ -120,9 +120,17 @@ Settings > Devices choose:
 | Microphone | CABLE Output (VB-Audio Virtual Cable) | the stream **received from** the AES67 network (so the far end hears it) |
 | Speaker | your normal speakers / headset | what Teams plays, **transmitted to** the AES67 network |
 
-With the default playback device as the source, everything the PC plays goes into the
-AES67 output stream, not only Teams. If you add the donationware **VB-CABLE A**, the preset
-detects it: set Teams' speaker to *CABLE-A Input* and only Teams audio is sent. In Windows
+**Isolating both directions.** One virtual cable is one direction. With only the free VB-CABLE
+the incoming stream is isolated (it reaches Teams' microphone and nothing else), but the
+outgoing stream is the loopback of your speakers, so everything the PC plays is sent. For a
+clean Teams-only outgoing stream add a second cable; the preset detects both options:
+
+| Second cable | Teams microphone | Teams speaker | Bridge "outgoing taken from" |
+|---|---|---|---|
+| VB-CABLE A+B (VB-Audio, donationware) | CABLE Output | CABLE-A Input | Loopback: CABLE-A Input |
+| Voicemeeter Banana (VB-Audio, donationware; must be running) | CABLE Output (or Voicemeeter Output with B1 enabled) | Voicemeeter AUX Input | Loopback: Voicemeeter AUX Input |
+
+In Windows
 Sound settings set both cable endpoints to 2 channels, 48000 Hz so Windows does not resample.
 In Teams, switch noise suppression off and enable high fidelity music mode when transmitting
 programme audio rather than speech.
