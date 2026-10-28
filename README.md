@@ -93,6 +93,31 @@ so set everything up in `aes67vsc-panel.exe` first. It runs in a console window;
 shortcut or a Task Scheduler entry to start it at logon. Device names are matched by
 substring, case-insensitively.
 
+### Microsoft Teams, Zoom, browsers
+
+These applications only see Windows audio devices. Install the free
+[VB-CABLE](https://vb-audio.com/Cable/) (reboot once), then double-click
+`start-bridge-teams.bat`. It starts the bridge as
+
+```
+aes67vsc-bridge --play "CABLE Input" --loopback default
+```
+
+and tells you what to pick in Teams > Settings > Devices:
+
+| Teams setting | Device | Carries |
+|---|---|---|
+| Microphone | CABLE Output (VB-Audio Virtual Cable) | the AES67 **input** stream |
+| Speaker | your normal speakers / headset | sent as the AES67 **output** stream |
+
+With the default playback device as the source, everything the PC plays goes into the
+AES67 output stream, not only Teams. If you add the donationware **VB-CABLE A**, the script
+detects it automatically: set Teams' speaker to *CABLE-A Input* and only Teams audio is
+sent. In Windows Sound settings set both cable endpoints to 2 channels, 48000 Hz so
+Windows does not resample. In Teams, switch noise suppression off and enable high fidelity
+music mode when transmitting programme audio rather than speech, otherwise Teams will
+process the feed heavily.
+
 Playback and recording devices run on their own clocks; the bridge keeps about 20 ms of
 buffer on each side and resamples by a fraction of a percent to track the drift.
 

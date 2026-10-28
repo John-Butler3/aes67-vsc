@@ -53,5 +53,5 @@ if(WIN32)
   endif()
 
   install(TARGETS aes67asio aes67vsc aes67vsc-panel aes67vsc-bridge RUNTIME DESTINATION . LIBRARY DESTINATION .)
-  install(FILES scripts/install.bat scripts/uninstall.bat README.md LICENSE sdp/example-receive.sdp DESTINATION .)
+  install(FILES scripts/install.bat scripts/uninstall.bat scripts/start-bridge-teams.bat README.md LICENSE sdp/example-receive.sdp DESTINATION .)
 endif()
