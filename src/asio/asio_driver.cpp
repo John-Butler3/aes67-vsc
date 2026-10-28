@@ -204,8 +204,8 @@ public:
         (void)ptp_ns;
         if (!buffers_ready_ || !callbacks_) { for (int c = 0; c < 2; c++) memset(out[c], 0, sizeof(int32_t) * frames); return; }
         int idx = buffer_index_;
-        const bool mono = nch() == 1;
-        if (mono) { if (buf_[0][0][idx]) for (int i = 0; i < frames; i++) buf_[0][0][idx][i] = (in[0][i] >> 1) + (in[1][i] >> 1); }
+        const bool is_mono = nch() == 1;
+        if (is_mono) { if (buf_[0][0][idx]) for (int i = 0; i < frames; i++) buf_[0][0][idx][i] = (in[0][i] >> 1) + (in[1][i] >> 1); }
         else for (int c = 0; c < 2; c++) if (buf_[0][c][idx]) memcpy(buf_[0][c][idx], in[c], sizeof(int32_t) * frames);
         sample_pos_ = pos + (uint64_t)frames;
         sys_time_ns_ = mono;
@@ -221,7 +221,7 @@ public:
         } else if (callbacks_->bufferSwitch) {
             callbacks_->bufferSwitch(idx, ASIOTrue);
         }
-        if (mono) {
+        if (is_mono) {
             if (buf_[1][0][idx]) { memcpy(out[0], buf_[1][0][idx], sizeof(int32_t) * frames); memcpy(out[1], buf_[1][0][idx], sizeof(int32_t) * frames); }
             else { memset(out[0], 0, sizeof(int32_t) * frames); memset(out[1], 0, sizeof(int32_t) * frames); }
         } else for (int c = 0; c < 2; c++) {
