@@ -1,0 +1,29 @@
+name: build
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+jobs:
+  linux-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run unit tests
+        run: ./build.sh native && ./build/native/test_core
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure (MSVC x64)
+        run: cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build --config Release
+      - name: Unit tests
+        run: build\Release\test_core.exe
+      - name: Package
+        run: cmake --install build --config Release --prefix dist\aes67-vsc-win64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aes67-vsc-win64
+          path: dist/aes67-vsc-win64

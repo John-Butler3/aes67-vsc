@@ -1,0 +1,47 @@
+cmake_minimum_required(VERSION 3.16)
+project(aes67vsc LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+file(READ "${CMAKE_SOURCE_DIR}/VERSION" AES67VSC_VERSION)
+string(STRIP "${AES67VSC_VERSION}" AES67VSC_VERSION)
+
+set(CORE
+  src/core/platform.cpp src/core/sdp.cpp src/core/rtp.cpp src/core/log.cpp src/core/config.cpp
+  src/core/status.cpp src/core/ptp.cpp src/core/sap.cpp src/core/engine.cpp)
+add_library(aes67core STATIC ${CORE})
+target_compile_definitions(aes67core PUBLIC AES67VSC_VERSION="${AES67VSC_VERSION}")
+if(WIN32)
+  target_compile_definitions(aes67core PUBLIC _WIN32_WINNT=0x0A00 NOMINMAX WIN32_LEAN_AND_MEAN)
+  target_link_libraries(aes67core PUBLIC ws2_32 iphlpapi winmm ole32 advapi32 shell32)
+  if(MSVC)
+    target_compile_options(aes67core PUBLIC /W3 /utf-8 /D_CRT_SECURE_NO_WARNINGS)
+  else()
+    target_link_options(aes67core PUBLIC -static)
+  endif()
+else()
+  find_package(Threads REQUIRED)
+  target_link_libraries(aes67core PUBLIC Threads::Threads rt)
+endif()
+
+add_executable(aes67vsc src/app/cli.cpp)
+target_link_libraries(aes67vsc aes67core)
+
+add_executable(test_core src/tests/test_core.cpp)
+target_link_libraries(test_core aes67core)
+enable_testing()
+add_test(NAME core COMMAND test_core)
+
+if(WIN32)
+  add_library(aes67asio SHARED src/asio/asio_driver.cpp src/asio/aes67asio.def src/asio/aes67asio.rc)
+  target_link_libraries(aes67asio aes67core)
+  set_target_properties(aes67asio PROPERTIES PREFIX "" OUTPUT_NAME "aes67asio")
+  if(NOT MSVC)
+    target_link_options(aes67asio PRIVATE -Wl,--enable-stdcall-fixup)
+  endif()
+
+  add_executable(aes67vsc-panel WIN32 src/app/panel.cpp src/app/panel.rc)
+  target_link_libraries(aes67vsc-panel aes67core comdlg32 comctl32 gdi32 user32)
+
+  install(TARGETS aes67asio aes67vsc aes67vsc-panel RUNTIME DESTINATION . LIBRARY DESTINATION .)
+  install(FILES scripts/install.bat scripts/uninstall.bat README.md LICENSE sdp/example-receive.sdp DESTINATION .)
+endif()

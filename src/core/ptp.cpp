@@ -1,0 +1,466 @@
+#include "ptp.h"
+#include "log.h"
+#include "status.h"
+#include <cstring>
+#include <cstdio>
+#include <algorithm>
+#include <cmath>
+
+namespace aes67 {
+
+// PTP message types
+enum : uint8_t { MT_SYNC = 0, MT_DELAY_REQ = 1, MT_FOLLOW_UP = 8, MT_DELAY_RESP = 9, MT_ANNOUNCE = 0xB };
+static const char* kPtpGroup = "224.0.1.129";
+static const int kHdr = 34;
+
+static inline uint16_t rd16(const uint8_t* b) { return (uint16_t)((b[0] << 8) | b[1]); }
+static inline uint32_t rd32(const uint8_t* b) { return ((uint32_t)b[0] << 24) | ((uint32_t)b[1] << 16) | ((uint32_t)b[2] << 8) | b[3]; }
+static inline void wr16(uint8_t* b, uint16_t v) { b[0] = (uint8_t)(v >> 8); b[1] = (uint8_t)v; }
+static inline void wr32(uint8_t* b, uint32_t v) { b[0] = (uint8_t)(v >> 24); b[1] = (uint8_t)(v >> 16); b[2] = (uint8_t)(v >> 8); b[3] = (uint8_t)v; }
+static inline int64_t rd_corr(const uint8_t* b) { // correctionField: ns << 16, signed
+    int64_t v = 0; for (int i = 0; i < 8; i++) v = (v << 8) | b[i];
+    return v >> 16;
+}
+
+int64_t ptp_read_timestamp(const uint8_t* b) {
+    uint64_t sec = ((uint64_t)rd16(b) << 32) | rd32(b + 2);
+    uint32_t ns = rd32(b + 6);
+    return (int64_t)sec * 1000000000LL + ns;
+}
+void ptp_write_timestamp(uint8_t* b, int64_t ns) {
+    if (ns < 0) ns = 0;
+    uint64_t sec = (uint64_t)(ns / 1000000000LL);
+    uint32_t n = (uint32_t)(ns % 1000000000LL);
+    wr16(b, (uint16_t)(sec >> 32)); wr32(b + 2, (uint32_t)sec); wr32(b + 6, n);
+}
+std::string ptp_identity_string(const uint8_t* id) {
+    char buf[32];
+    snprintf(buf, sizeof buf, "%02X-%02X-%02X-%02X-%02X-%02X-%02X-%02X", id[0], id[1], id[2], id[3], id[4], id[5], id[6], id[7]);
+    return buf;
+}
+
+PtpClock::PtpClock() {}
+PtpClock::~PtpClock() { stop(); }
+
+bool PtpClock::start(const PtpParams& p, std::string& err) {
+    stop();
+    p_ = p;
+    // Clock identity: EUI-64 from MAC, or random.
+    if (p.has_mac) {
+        own_id_ = {p.mac[0], p.mac[1], p.mac[2], 0xFF, 0xFE, p.mac[3], p.mac[4], p.mac[5]};
+    } else {
+        uint64_t r = random_u64();
+        for (int i = 0; i < 8; i++) own_id_[i] = (uint8_t)(r >> (8 * i));
+    }
+    memcpy(own_port_id_.data(), own_id_.data(), 8);
+    own_port_id_[8] = 0; own_port_id_[9] = 1;
+
+    servo_reset();
+    start_mono_ = mono_ns();
+    is_master_ = false; have_master_ = false; foreign_.clear();
+    if (p.mode == PtpMode::Off) { set_state(PtpState::Off); return true; }
+
+    auto open = [&](UdpSocket& s, uint16_t port) {
+        if (!s.open()) { err = "socket: " + net_error_string(net_last_error()); return false; }
+        s.set_reuse_addr(true);
+        if (!s.bind_any(port)) { err = "bind udp " + std::to_string(port) + ": " + net_error_string(net_last_error()); return false; }
+        if (!s.join_multicast(kPtpGroup, p.iface_ip)) { err = "join 224.0.1.129 on " + p.iface_ip + ": " + net_error_string(net_last_error()); return false; }
+        s.set_multicast_if(p.iface_ip);
+        s.set_multicast_ttl(p.ttl);
+        s.set_multicast_loop(true);
+        s.set_tos(46 << 2);
+        s.set_recv_buffer(256 * 1024);
+        s.set_timestamping(true);
+        return true;
+    };
+    if (!open(ev_, p.event_port) || !open(gen_, (uint16_t)(p.event_port + 1))) { ev_.close(); gen_.close(); return false; }
+    running_ = true;
+    set_state(PtpState::Listening);
+    thread_ = std::thread([this] { thread_main(); });
+    return true;
+}
+
+void PtpClock::stop() {
+    if (running_) {
+        running_ = false;
+        if (thread_.joinable()) thread_.join();
+    }
+    ev_.close(); gen_.close();
+    if (state_ != PtpState::Off) set_state(PtpState::Off);
+}
+
+void PtpClock::set_state(PtpState s) {
+    if (state_.load() != s) {
+        LOG_I("PTP state -> %s", ptp_state_name((uint32_t)s));
+        state_ = s;
+    }
+}
+
+// ---------------------------------------------------------------- servo
+void PtpClock::servo_reset() {
+    std::lock_guard<std::mutex> g(mu_);
+    int64_t m = mono_ns();
+    servo_.ref_mono = m;
+    servo_.ref_ptp = wall_tai_ns();
+    servo_.freq = 0.0;
+    servo_.valid = true;
+    delay_win_n_ = delay_win_i_ = 0;
+    good_in_row_ = 0; last_t1_ = last_t2_ = 0;
+    last_servo_mono_ = 0;
+}
+int64_t PtpClock::mono_to_ptp(int64_t mono) const {
+    std::lock_guard<std::mutex> g(mu_);
+    double d = (double)(mono - servo_.ref_mono);
+    return servo_.ref_ptp + (int64_t)std::llround(d * (1.0 + servo_.freq));
+}
+int64_t PtpClock::ptp_to_mono(int64_t ptp) const {
+    std::lock_guard<std::mutex> g(mu_);
+    double d = (double)(ptp - servo_.ref_ptp);
+    return servo_.ref_mono + (int64_t)std::llround(d / (1.0 + servo_.freq));
+}
+
+// master_ns is the master's time corresponding to local mono time local_mono_ns.
+void PtpClock::servo_update(int64_t master_ns, int64_t local_mono) {
+    int64_t est = mono_to_ptp(local_mono);
+    int64_t e = master_ns - est;   // positive: we are behind
+    last_offset_ns_ = -e;
+    std::lock_guard<std::mutex> g(mu_);
+    const int64_t kStep = 50 * 1000000LL;  // 50 ms
+    if (std::llabs(e) > kStep || !servo_.valid) {
+        // Hard step.
+        servo_.ref_mono = local_mono;
+        servo_.ref_ptp = master_ns;
+        servo_.freq = 0.0;
+        servo_.valid = true;
+        good_in_row_ = 0;
+        last_servo_mono_ = local_mono;
+        return;
+    }
+    // Re-anchor at now (continuity), then apply PI correction.
+    const double Kp = 0.1, Ki = 0.005;
+    double dt = last_servo_mono_ ? (double)(local_mono - last_servo_mono_) : 1e9;
+    if (dt < 1e6) dt = 1e6;
+    int64_t cur = est;
+    servo_.ref_mono = local_mono;
+    servo_.ref_ptp = cur + (int64_t)std::llround(Kp * (double)e);
+    servo_.freq += Ki * (double)e / dt;
+    if (servo_.freq > 500e-6) servo_.freq = 500e-6;
+    if (servo_.freq < -500e-6) servo_.freq = -500e-6;
+    last_servo_mono_ = local_mono;
+    if (std::llabs(e) < 250000) { if (good_in_row_ < 100) good_in_row_++; } else good_in_row_ = 0;
+}
+
+// A (master time t1, local receive time t2) pair from Sync/Follow_Up.
+void PtpClock::sync_measurement(int64_t t1, int64_t t2) {
+    { std::lock_guard<std::mutex> g(mu_); last_t1_ = t1; last_t2_ = t2; }
+    servo_update(t1 + path_delay_ns_.load(), t2);
+    sync_count_++;
+}
+
+// ---------------------------------------------------------------- identity strings
+std::string PtpClock::own_identity() const { return ptp_identity_string(own_id_.data()); }
+std::string PtpClock::master_identity() const {
+    std::lock_guard<std::mutex> g(mu_);
+    if (have_master_ && !is_master_) return ptp_identity_string(cur_master_.gm_id.data());
+    return ptp_identity_string(own_id_.data());
+}
+std::string PtpClock::refclk_string() const {
+    return "ptp=IEEE1588-2008:" + master_identity() + ":" + std::to_string(p_.domain);
+}
+
+// ---------------------------------------------------------------- thread
+void PtpClock::thread_main() {
+    make_thread_realtime("aes67-ptp");
+    uint8_t buf[512];
+    while (running_) {
+        fd_set rf; FD_ZERO(&rf);
+        FD_SET(ev_.handle(), &rf); FD_SET(gen_.handle(), &rf);
+        int maxfd = (int)std::max(ev_.handle(), gen_.handle()) + 1;
+        timeval tv; tv.tv_sec = 0; tv.tv_usec = 10000;
+        int r = select(maxfd, &rf, nullptr, nullptr, &tv);
+        if (r > 0) {
+            std::string from; uint16_t port; int64_t rx;
+            if (FD_ISSET(ev_.handle(), &rf)) {
+                int n = ev_.recv(buf, sizeof buf, &from, &port, &rx);
+                if (n > 0) handle_event(buf, n, rx, from);
+            }
+            if (FD_ISSET(gen_.handle(), &rf)) {
+                int n = gen_.recv(buf, sizeof buf, &from, &port, &rx);
+                if (n > 0) handle_general(buf, n, rx, from);
+            }
+        }
+        int64_t now = mono_ns();
+        select_master(now);
+        if (is_master_) master_tick(now); else slave_tick(now);
+    }
+}
+
+static bool hdr_ok(const uint8_t* b, int n, int domain) {
+    if (n < kHdr) return false;
+    if ((b[1] & 0x0F) != 2) return false;       // versionPTP
+    if (b[4] != domain) return false;
+    return true;
+}
+
+void PtpClock::handle_event(const uint8_t* b, int n, int64_t rx_mono, const std::string&) {
+    if (!hdr_ok(b, n, p_.domain)) return;
+    if (memcmp(b + 20, own_port_id_.data(), 10) == 0) return;  // our own
+    uint8_t type = b[0] & 0x0F;
+    if (type == MT_SYNC && n >= kHdr + 10) {
+        int64_t t1 = 0; bool one_step = false;
+        {
+            std::lock_guard<std::mutex> g(mu_);
+            if (!have_master_ || is_master_ || memcmp(b + 20, cur_master_.port_id.data(), 10) != 0) return;
+            uint16_t seq = rd16(b + 30);
+            bool two_step = (b[6] & 0x02) != 0;
+            last_sync_mono_ = rx_mono;
+            if (two_step) {
+                pending_sync_[seq] = rx_mono;
+                if (pending_sync_.size() > 16) pending_sync_.erase(pending_sync_.begin());
+            } else {
+                t1 = ptp_read_timestamp(b + kHdr) + rd_corr(b + 8);
+                one_step = true;
+            }
+        }
+        if (one_step) sync_measurement(t1, rx_mono);
+    } else if (type == MT_DELAY_REQ && n >= kHdr + 10) {
+        if (is_master_) send_delay_resp(b, rx_mono);
+    }
+}
+
+void PtpClock::handle_general(const uint8_t* b, int n, int64_t rx_mono, const std::string&) {
+    if (!hdr_ok(b, n, p_.domain)) return;
+    if (memcmp(b + 20, own_port_id_.data(), 10) == 0) return;
+    uint8_t type = b[0] & 0x0F;
+    if (type == MT_ANNOUNCE && n >= kHdr + 30) {
+        handle_announce(b, n, rx_mono);
+    } else if (type == MT_FOLLOW_UP && n >= kHdr + 10) {
+        int64_t t1 = 0, t2 = 0; bool ok = false;
+        {
+            std::lock_guard<std::mutex> g(mu_);
+            if (!have_master_ || is_master_ || memcmp(b + 20, cur_master_.port_id.data(), 10) != 0) return;
+            uint16_t seq = rd16(b + 30);
+            auto it = pending_sync_.find(seq);
+            if (it == pending_sync_.end()) return;
+            t2 = it->second; pending_sync_.erase(it);
+            t1 = ptp_read_timestamp(b + kHdr) + rd_corr(b + 8);
+            ok = true;
+        }
+        if (ok) sync_measurement(t1, t2);
+    } else if (type == MT_DELAY_RESP && n >= kHdr + 20) {
+        std::lock_guard<std::mutex> g(mu_);
+        if (!have_master_ || is_master_) return;
+        if (memcmp(b + kHdr + 10, own_port_id_.data(), 10) != 0) return;   // requestingPortIdentity
+        if (rd16(b + 30) != dreq_seq_) return;
+        int64_t t4 = ptp_read_timestamp(b + kHdr) + rd_corr(b + 8);
+        int64_t t3 = dreq_sent_mono_;
+        if (!last_t2_) return;
+        // meanPathDelay = ((t2 - t3) + (t4 - t1)) / 2 : each difference is within one clock domain.
+        int64_t rtt = (last_t2_ - t3) + (t4 - last_t1_);
+        if (rtt < 0) rtt = 0;
+        if (rtt > 100 * 1000000LL) return;  // nonsense
+        int64_t mpd = rtt / 2;
+        delay_win_[delay_win_i_] = mpd; delay_win_i_ = (delay_win_i_ + 1) % 8; if (delay_win_n_ < 8) delay_win_n_++;
+        int64_t mn = delay_win_[0];
+        for (int i = 1; i < delay_win_n_; i++) mn = std::min(mn, delay_win_[i]);
+        path_delay_ns_ = mn;
+    }
+}
+
+void PtpClock::handle_announce(const uint8_t* b, int, int64_t rx_mono) {
+    ForeignMaster f;
+    memcpy(f.port_id.data(), b + 20, 10);
+    const uint8_t* body = b + kHdr;
+    // body: originTimestamp(10) currentUtcOffset(2) reserved(1) gmPriority1(1) gmClockQuality(4) gmPriority2(1) gmIdentity(8) stepsRemoved(2) timeSource(1)
+    f.priority1 = body[13];
+    f.clock_class = body[14];
+    f.accuracy = body[15];
+    f.variance = rd16(body + 16);
+    f.priority2 = body[18];
+    memcpy(f.gm_id.data(), body + 19, 8);
+    f.steps_removed = rd16(body + 27);
+    f.log_announce = (int8_t)b[33];
+    f.last_seen_mono = rx_mono;
+    std::lock_guard<std::mutex> g(mu_);
+    foreign_[f.port_id] = f;
+}
+
+static int cmp_dataset(const uint8_t p1a, uint8_t ca, uint8_t aa, uint16_t va, uint8_t p2a, const uint8_t* ida,
+                       const uint8_t p1b, uint8_t cb, uint8_t ab, uint16_t vb, uint8_t p2b, const uint8_t* idb) {
+    if (p1a != p1b) return p1a < p1b ? -1 : 1;
+    if (ca != cb) return ca < cb ? -1 : 1;
+    if (aa != ab) return aa < ab ? -1 : 1;
+    if (va != vb) return va < vb ? -1 : 1;
+    if (p2a != p2b) return p2a < p2b ? -1 : 1;
+    return memcmp(ida, idb, 8);
+}
+
+bool PtpClock::foreign_better_than_us(const ForeignMaster& f) const {
+    // Our dataset when acting as master: class 248 (free-running), accuracy unknown, variance max.
+    return cmp_dataset(f.priority1, f.clock_class, f.accuracy, f.variance, f.priority2, f.gm_id.data(),
+                       (uint8_t)p_.priority1, 248, 0xFE, 0xFFFF, (uint8_t)p_.priority2, own_id_.data()) < 0;
+}
+
+void PtpClock::select_master(int64_t now_mono) {
+    std::lock_guard<std::mutex> g(mu_);
+    // Expire foreign masters (3 announce intervals, min 3 s).
+    for (auto it = foreign_.begin(); it != foreign_.end();) {
+        double ivl = std::ldexp(1.0, it->second.log_announce);
+        int64_t timeout = (int64_t)(std::max(3.0 * ivl, 3.0) * 1e9);
+        if (now_mono - it->second.last_seen_mono > timeout) it = foreign_.erase(it); else ++it;
+    }
+    const ForeignMaster* best = nullptr;
+    for (auto& kv : foreign_) {
+        const ForeignMaster& f = kv.second;
+        if (f.clock_class == 255) continue; // slave-only
+        if (!best || cmp_dataset(f.priority1, f.clock_class, f.accuracy, f.variance, f.priority2, f.gm_id.data(),
+                                 best->priority1, best->clock_class, best->accuracy, best->variance, best->priority2, best->gm_id.data()) < 0)
+            best = &f;
+    }
+    bool want_master = false;
+    if (p_.mode == PtpMode::Master) {
+        want_master = !best || !foreign_better_than_us(*best);
+    } else if (p_.mode == PtpMode::Auto) {
+        if (best) want_master = !foreign_better_than_us(*best);
+        else want_master = (now_mono - start_mono_) > (int64_t)(p_.listen_seconds * 1e9);
+    }
+    if (want_master) {
+        if (!is_master_) { mu_.unlock(); become_master(); mu_.lock(); }
+        return;
+    }
+    if (best) {
+        if (!have_master_ || is_master_ || memcmp(best->port_id.data(), cur_master_.port_id.data(), 10) != 0) {
+            ForeignMaster f = *best;
+            mu_.unlock(); become_slave(f); mu_.lock();
+        } else {
+            cur_master_ = *best; // refresh dataset
+        }
+    } else if (have_master_ && !is_master_) {
+        // Lost our master.
+        have_master_ = false;
+        LOG_W("PTP master lost; free-running");
+        set_state(p_.mode == PtpMode::Slave || (now_mono - start_mono_) > (int64_t)(p_.listen_seconds * 1e9) ? PtpState::FreeRunning : PtpState::Listening);
+    } else if (!have_master_ && state_ == PtpState::Listening && p_.mode == PtpMode::Slave &&
+               (now_mono - start_mono_) > (int64_t)(p_.listen_seconds * 1e9)) {
+        set_state(PtpState::FreeRunning);
+    }
+}
+
+void PtpClock::become_master() {
+    {
+        std::lock_guard<std::mutex> g(mu_);
+        is_master_ = true; have_master_ = true;
+        cur_master_ = ForeignMaster{};
+        pending_sync_.clear();
+        // Master time = free-running TAI wall clock.
+        servo_.ref_mono = mono_ns(); servo_.ref_ptp = wall_tai_ns(); servo_.freq = 0; servo_.valid = true;
+        last_offset_ns_ = 0; path_delay_ns_ = 0;
+    }
+    LOG_I("PTP: acting as master (%s), domain %d", own_identity().c_str(), p_.domain);
+    set_state(PtpState::Master);
+    last_sync_tx_mono_ = last_ann_tx_mono_ = 0;
+}
+
+void PtpClock::become_slave(const ForeignMaster& f) {
+    {
+        std::lock_guard<std::mutex> g(mu_);
+        is_master_ = false; have_master_ = true; cur_master_ = f;
+        pending_sync_.clear();
+        delay_win_n_ = delay_win_i_ = 0; good_in_row_ = 0; last_t1_ = last_t2_ = 0;
+        servo_.valid = false;  // force a step on the first sync
+        path_delay_ns_ = 0;
+        last_dreq_mono_ = 0;
+    }
+    LOG_I("PTP: following master %s (gm %s, class %d, prio1 %d)", ptp_identity_string(f.port_id.data()).c_str(),
+          ptp_identity_string(f.gm_id.data()).c_str(), f.clock_class, f.priority1);
+    set_state(PtpState::Listening);
+}
+
+void PtpClock::slave_tick(int64_t now) {
+    bool have; int good;
+    { std::lock_guard<std::mutex> g(mu_); have = have_master_; good = good_in_row_; }
+    if (!have) return;
+    // Lock state
+    if (good >= 4 && state_ != PtpState::Locked) set_state(PtpState::Locked);
+    if (good == 0 && state_ == PtpState::Locked) set_state(PtpState::Listening);
+    // Sync timeout
+    if (last_sync_mono_ && now - last_sync_mono_ > 5000000000LL) {
+        std::lock_guard<std::mutex> g(mu_);
+        good_in_row_ = 0;
+    }
+    // Delay request about once per second with jitter.
+    if (now - last_dreq_mono_ > 900000000LL + (int64_t)(random_u32() % 200000000)) send_delay_req(now);
+}
+
+void PtpClock::fill_header(uint8_t* b, uint8_t type, uint16_t len, uint16_t seq, uint8_t control, int8_t log_interval, bool two_step) {
+    memset(b, 0, len);
+    b[0] = type & 0x0F;
+    b[1] = 2;
+    wr16(b + 2, len);
+    b[4] = (uint8_t)p_.domain;
+    b[6] = two_step ? 0x02 : 0x00;
+    b[7] = 0x08; // PTP_TIMESCALE
+    memcpy(b + 20, own_port_id_.data(), 10);
+    wr16(b + 30, seq);
+    b[32] = control;
+    b[33] = (uint8_t)log_interval;
+}
+
+void PtpClock::send_delay_req(int64_t now) {
+    uint8_t b[kHdr + 10];
+    dreq_seq_++;
+    fill_header(b, MT_DELAY_REQ, sizeof b, dreq_seq_, 1, 0x7F, false);
+    int64_t t = mono_ns();
+    ev_.send_to(b, sizeof b, kPtpGroup, p_.event_port);
+    std::lock_guard<std::mutex> g(mu_);
+    dreq_sent_mono_ = (t + mono_ns()) / 2;
+    last_dreq_mono_ = now;
+}
+
+void PtpClock::master_tick(int64_t now) {
+    double ann_ivl = std::ldexp(1.0, p_.announce_log_interval) * 1e9;
+    double sync_ivl = std::ldexp(1.0, p_.sync_log_interval) * 1e9;
+    if (now - last_ann_tx_mono_ >= (int64_t)ann_ivl) { send_announce(); last_ann_tx_mono_ = now; }
+    if (now - last_sync_tx_mono_ >= (int64_t)sync_ivl) { send_sync(); last_sync_tx_mono_ = last_sync_tx_mono_ ? last_sync_tx_mono_ + (int64_t)sync_ivl : now; if (now - last_sync_tx_mono_ > (int64_t)sync_ivl) last_sync_tx_mono_ = now; }
+}
+
+void PtpClock::send_announce() {
+    uint8_t b[kHdr + 30];
+    ann_seq_++;
+    fill_header(b, MT_ANNOUNCE, sizeof b, ann_seq_, 5, (int8_t)p_.announce_log_interval, false);
+    uint8_t* body = b + kHdr;
+    wr16(body + 10, 37);              // currentUtcOffset
+    body[13] = (uint8_t)p_.priority1;
+    body[14] = 248;                   // clockClass: default, not synchronized to a primary reference
+    body[15] = 0xFE;                  // accuracy unknown
+    wr16(body + 16, 0xFFFF);          // variance
+    body[18] = (uint8_t)p_.priority2;
+    memcpy(body + 19, own_id_.data(), 8);
+    wr16(body + 27, 0);               // stepsRemoved
+    body[29] = 0xA0;                  // timeSource: internal oscillator
+    gen_.send_to(b, sizeof b, kPtpGroup, (uint16_t)(p_.event_port + 1));
+}
+
+void PtpClock::send_sync() {
+    uint8_t s[kHdr + 10];
+    sync_seq_++;
+    fill_header(s, MT_SYNC, sizeof s, sync_seq_, 0, (int8_t)p_.sync_log_interval, true);
+    int64_t t_before = mono_ns();
+    ev_.send_to(s, sizeof s, kPtpGroup, p_.event_port);
+    int64_t t_after = mono_ns();
+    int64_t t1 = mono_to_ptp((t_before + t_after) / 2);
+    uint8_t f[kHdr + 10];
+    fill_header(f, MT_FOLLOW_UP, sizeof f, sync_seq_, 2, (int8_t)p_.sync_log_interval, false);
+    ptp_write_timestamp(f + kHdr, t1);
+    gen_.send_to(f, sizeof f, kPtpGroup, (uint16_t)(p_.event_port + 1));
+}
+
+void PtpClock::send_delay_resp(const uint8_t* req, int64_t rx_mono) {
+    uint8_t b[kHdr + 20];
+    fill_header(b, MT_DELAY_RESP, sizeof b, rd16(req + 30), 3, 0, false);
+    ptp_write_timestamp(b + kHdr, mono_to_ptp(rx_mono));
+    memcpy(b + kHdr + 10, req + 20, 10);
+    gen_.send_to(b, sizeof b, kPtpGroup, (uint16_t)(p_.event_port + 1));
+}
+
+} // namespace aes67

@@ -1,0 +1,87 @@
+#include <windows.h>
+#include "panel_res.h"
+#ifndef AES67VSC_VERSION
+#define AES67VSC_VERSION "0.1.0"
+#endif
+
+1 RT_MANIFEST "panel.manifest"
+
+IDD_MAIN DIALOGEX 0, 0, 470, 338
+STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX
+EXSTYLE WS_EX_ACCEPTFILES
+CAPTION "AES67 Virtual Sound Card"
+FONT 9, "Segoe UI", 400, 0, 0x1
+BEGIN
+    GROUPBOX        "Device", -1, 7, 5, 456, 56
+    LTEXT           "Network interface:", -1, 15, 19, 62, 10
+    COMBOBOX        IDC_IFACE, 80, 17, 170, 120, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Sample rate:", -1, 262, 19, 44, 10
+    COMBOBOX        IDC_RATE, 308, 17, 56, 80, CBS_DROPDOWNLIST | WS_TABSTOP
+    LTEXT           "Buffer (frames):", -1, 372, 19, 52, 10
+    COMBOBOX        IDC_BUFFER, 424, 17, 36, 120, CBS_DROPDOWN | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "PTP mode:", -1, 15, 40, 62, 10
+    COMBOBOX        IDC_PTPMODE, 80, 38, 70, 80, CBS_DROPDOWNLIST | WS_TABSTOP
+    LTEXT           "Domain:", -1, 158, 40, 28, 10
+    EDITTEXT        IDC_PTPDOMAIN, 188, 38, 24, 12, ES_NUMBER
+    LTEXT           "Link offset / playout delay (ms):", -1, 262, 40, 110, 10
+    EDITTEXT        IDC_LINKOFF, 372, 38, 36, 12
+
+    GROUPBOX        "Receive (inputs 1-2)", -1, 7, 66, 226, 130
+    CONTROL         "Enabled", IDC_RX_ENABLE, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 79, 50, 10
+    PUSHBUTTON      "Load SDP file...", IDC_RX_LOAD, 150, 76, 76, 14
+    LTEXT           "", IDC_RX_INFO, 15, 93, 211, 60, SS_LEFT | SS_NOPREFIX
+    LTEXT           "Discovered (SAP):", -1, 15, 160, 60, 10
+    COMBOBOX        IDC_RX_DISCOVERED, 15, 170, 150, 120, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    PUSHBUTTON      "Use", IDC_RX_USE, 170, 169, 28, 14
+    PUSHBUTTON      "Clear", IDC_RX_CLEAR, 200, 169, 26, 14
+    LTEXT           "First stream channel for input 1:", -1, 15, 184, 110, 10
+    EDITTEXT        IDC_RX_CHOFF, 128, 182, 24, 12, ES_NUMBER
+
+    GROUPBOX        "Transmit (outputs 1-2)", -1, 240, 66, 223, 130
+    CONTROL         "Enabled", IDC_TX_ENABLE, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 248, 79, 50, 10
+    CONTROL         "Announce via SAP", IDC_TX_SAP, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 320, 79, 80, 10
+    LTEXT           "Stream name:", -1, 248, 96, 50, 10
+    EDITTEXT        IDC_TX_NAME, 300, 94, 156, 12
+    LTEXT           "Multicast address:", -1, 248, 112, 60, 10
+    EDITTEXT        IDC_TX_DEST, 300, 110, 80, 12
+    LTEXT           "Port:", -1, 386, 112, 20, 10
+    EDITTEXT        IDC_TX_PORT, 406, 110, 36, 12, ES_NUMBER
+    LTEXT           "Encoding:", -1, 248, 128, 50, 10
+    COMBOBOX        IDC_TX_ENC, 300, 126, 50, 60, CBS_DROPDOWNLIST | WS_TABSTOP
+    LTEXT           "Packet time 1 ms, 2 channels (AES67)", -1, 356, 128, 104, 10
+    PUSHBUTTON      "Save SDP file...", IDC_TX_EXPORT, 248, 150, 76, 14
+    PUSHBUTTON      "Copy SDP to clipboard", IDC_TX_COPY, 330, 150, 90, 14
+    LTEXT           "Receivers (another PC with this driver, Dante/AES67 devices, Ravenna...) subscribe with this SDP.", -1, 248, 170, 210, 20
+
+    GROUPBOX        "Status", -1, 7, 200, 456, 108
+    LTEXT           "", IDC_STATUS, 15, 212, 440, 92, SS_LEFT | SS_NOPREFIX
+
+    PUSHBUTTON      "Open config folder", IDC_OPENCFG, 7, 316, 80, 15
+    DEFPUSHBUTTON   "Apply", IDC_APPLY, 352, 316, 52, 15
+    PUSHBUTTON      "Close", IDCANCEL, 410, 316, 52, 15
+END
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 0,1,0,0
+ PRODUCTVERSION 0,1,0,0
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_APP
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "FileDescription", "AES67 Virtual Sound Card control panel"
+            VALUE "FileVersion", AES67VSC_VERSION
+            VALUE "InternalName", "aes67vsc-panel"
+            VALUE "LegalCopyright", "MIT License"
+            VALUE "OriginalFilename", "aes67vsc-panel.exe"
+            VALUE "ProductName", "AES67 Virtual Sound Card"
+            VALUE "ProductVersion", AES67VSC_VERSION
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

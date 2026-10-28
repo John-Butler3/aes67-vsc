@@ -1,0 +1,27 @@
+#pragma once
+#define IDD_MAIN          100
+#define IDI_APP           101
+#define IDC_IFACE         1001
+#define IDC_RATE          1002
+#define IDC_BUFFER        1003
+#define IDC_LINKOFF       1004
+#define IDC_PTPMODE       1005
+#define IDC_PTPDOMAIN     1006
+#define IDC_RX_ENABLE     1010
+#define IDC_RX_INFO       1011
+#define IDC_RX_LOAD       1012
+#define IDC_RX_DISCOVERED 1013
+#define IDC_RX_USE        1014
+#define IDC_RX_CLEAR      1015
+#define IDC_RX_CHOFF      1016
+#define IDC_TX_ENABLE     1020
+#define IDC_TX_NAME       1021
+#define IDC_TX_DEST       1022
+#define IDC_TX_PORT       1023
+#define IDC_TX_ENC        1024
+#define IDC_TX_SAP        1025
+#define IDC_TX_EXPORT     1026
+#define IDC_TX_COPY       1027
+#define IDC_STATUS        1030
+#define IDC_OPENCFG       1031
+#define IDC_APPLY         1032
