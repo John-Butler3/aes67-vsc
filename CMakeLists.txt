@@ -42,6 +42,9 @@ if(WIN32)
     target_link_options(aes67asio PRIVATE -Wl,--enable-stdcall-fixup)
   endif()
 
+  add_executable(aes67vsc-bridge src/app/bridge.cpp)
+  target_link_libraries(aes67vsc-bridge aes67core avrt)
+
   add_executable(aes67vsc-panel WIN32 src/app/panel.cpp src/app/panel.rc)
   target_link_libraries(aes67vsc-panel aes67core comdlg32 comctl32 gdi32 user32)
   if(MSVC)
@@ -49,6 +52,6 @@ if(WIN32)
     target_link_options(aes67vsc-panel PRIVATE /MANIFEST:NO)
   endif()
 
-  install(TARGETS aes67asio aes67vsc aes67vsc-panel RUNTIME DESTINATION . LIBRARY DESTINATION .)
+  install(TARGETS aes67asio aes67vsc aes67vsc-panel aes67vsc-bridge RUNTIME DESTINATION . LIBRARY DESTINATION .)
   install(FILES scripts/install.bat scripts/uninstall.bat README.md LICENSE sdp/example-receive.sdp DESTINATION .)
 endif()

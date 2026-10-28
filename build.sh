@@ -28,10 +28,12 @@ windows() {
   $CXX_WIN $WFLAGS -shared $CORE src/asio/asio_driver.cpp build/win64/aes67asio.res src/asio/aes67asio.def -o build/win64/aes67asio.dll $WLIBS -Wl,--enable-stdcall-fixup
   # console CLI
   $CXX_WIN $WFLAGS $CORE src/app/cli.cpp -o build/win64/aes67vsc.exe $WLIBS
+  # WASAPI bridge
+  $CXX_WIN $WFLAGS $CORE src/app/bridge.cpp -o build/win64/aes67vsc-bridge.exe $WLIBS -lavrt
   # control panel GUI
   $WINDRES src/app/panel.rc -O coff -o build/win64/panel.res
   $CXX_WIN $WFLAGS -mwindows $CORE src/app/panel.cpp build/win64/panel.res -o build/win64/aes67vsc-panel.exe $WLIBS -lcomdlg32 -lcomctl32 -lgdi32 -luser32
-  ${STRIP:-x86_64-w64-mingw32-strip} build/win64/aes67asio.dll build/win64/aes67vsc.exe build/win64/aes67vsc-panel.exe
+  ${STRIP:-x86_64-w64-mingw32-strip} build/win64/aes67asio.dll build/win64/aes67vsc.exe build/win64/aes67vsc-panel.exe build/win64/aes67vsc-bridge.exe
   cp scripts/install.bat scripts/uninstall.bat README.md LICENSE build/win64/ 2>/dev/null || true
   cp sdp/example-receive.sdp build/win64/ 2>/dev/null || true
   echo "built build/win64/"

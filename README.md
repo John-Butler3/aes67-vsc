@@ -70,6 +70,32 @@ aes67vsc interfaces               list IPv4 interfaces
 aes67vsc selftest                 loop a tone through TX and RX on this machine
 ```
 
+## Use it as a normal Windows sound device (bridge)
+
+The ASIO driver is only visible to ASIO applications. Windows Sound settings list WDM/WASAPI
+devices, and those need a kernel driver signed through Microsoft, which a free project cannot
+ship. `aes67vsc-bridge.exe` closes that gap by routing the AES67 streams to and from any
+existing Windows audio device:
+
+```
+aes67vsc-bridge --list                                   show playback / recording devices
+aes67vsc-bridge                                          AES67 in -> default speakers, default mic -> AES67 out
+aes67vsc-bridge --play "Speakers" --loopback "Speakers"  listen to the stream and send everything the PC plays
+aes67vsc-bridge --play "CABLE Input" --loopback "Speakers"
+```
+
+For other applications to *record* the AES67 audio, install the free
+[VB-CABLE](https://vb-audio.com/Cable/) virtual cable, point `--play` at **CABLE Input** and
+let the apps record from **CABLE Output**. For applications to *send* to AES67 silently, give
+them a second cable (or VB-CABLE A/B) as output and use `--loopback` on that cable's playback
+side. The bridge uses the same configuration as the ASIO driver (streams, interface, clock),
+so set everything up in `aes67vsc-panel.exe` first. It runs in a console window; create a
+shortcut or a Task Scheduler entry to start it at logon. Device names are matched by
+substring, case-insensitively.
+
+Playback and recording devices run on their own clocks; the bridge keeps about 20 ms of
+buffer on each side and resamples by a fraction of a percent to track the drift.
+
 ## How it works
 
 ```
@@ -141,6 +167,8 @@ every push. No third-party code or SDKs are used; the ASIO COM interface is decl
 * Software PTP timestamps limit clock accuracy to the tens of microseconds; good enough for
   sample-accurate playout with a 1-2 ms link offset, not for hardware-grade phase alignment.
 * One receive stream and one transmit stream, 2 channels each.
+* No native Windows (WDM) sound device: that needs a Microsoft-signed kernel driver. Use the
+  bridge with VB-CABLE instead.
 * IPv4 only. No RTCP, no SIP/RTSP, no NMOS (SDP file and SAP discovery only).
 
 ## License
