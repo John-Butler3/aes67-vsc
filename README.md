@@ -49,33 +49,28 @@ exits. Tick *Start this app with Windows* to have it run at logon, hidden in the
 | yellow | streaming but something is off: no PTP lock, no receive data, or driver and bridge both running |
 | red | the bridge reported an error (hover for the message, open the window for details) |
 
-The window has five parts:
+The window has four tabs:
 
-* **Device**: the network interface on the AES67 network, sample rate, ASIO buffer size, PTP
-  mode/domain, *Channels* (2 x 2 stereo, or 1 x 1 mono: incoming summed to one input, outgoing
-  sent as a 1-channel stream) and the *link offset* (receive playout delay, default 4 ms; 1-2 ms works on a
-  quiet switched LAN).
-* **Receive from network** (driver inputs 1-2): *Load SDP file...* with the SDP exported by the sending device (Dante
-  Controller > AES67 flows, RAVENNA/ANEMAN, another PC with this driver, ...), or drop an
-  `.sdp` file onto the window. Streams announced via SAP appear in the *Discovered* list. For
-  multichannel streams choose which stream channel feeds input 1.
-* **Transmit to network** (driver outputs 1-2): stream name, multicast address and port, then **Save SDP file...** (or copy
-  to the clipboard) and give that file to the receiver. The stream is also announced via SAP.
-* **Windows audio bridge**: makes the streams available to ordinary applications (Teams,
-  browsers, players) through Windows audio devices. Pick on which device the incoming stream (received from the
-  network) is played and which device (or playback loopback) becomes the outgoing stream
-  (transmitted to the network), press *Start bridge*, or
-  press **Teams preset** which configures everything for a Teams/Zoom call (see below).
-  *Start bridge with this app* restarts it automatically at logon. The device lists can only
-  show devices Windows already has: for the incoming stream to appear as a **microphone**
-  you need a virtual cable such as the free VB-CABLE (button *Get VB-CABLE...*); the list
-  marks virtual cables with the recording device they come out of, and a hint line tells you
-  which microphone / speaker to pick in the application.
-* **Status**: what is running right now: the ASIO driver (inside an audio application), the
-  bridge, PTP clock state and offset, received/lost packets, transmitted packets, errors.
+* **Status**: a dashboard. One headline with a coloured indicator (the tray icon shows the
+  same colour), then one line each for the ASIO driver, the audio bridge, the PTP clock,
+  the incoming stream and the outgoing stream, each with its own indicator and plain-language
+  state, plus packet counters. Start/stop the bridge and the Teams preset are right there.
+* **Streams**: the incoming stream (*Load SDP file...*, drag and drop an `.sdp` anywhere on the
+  window, or pick a stream discovered via SAP; choose the channel pair for multichannel
+  streams) and the outgoing stream (name, multicast address, port, encoding, SAP announce,
+  *Save SDP file...* / copy to clipboard).
+* **Bridge**: route the streams to ordinary Windows audio devices for Teams, browsers and
+  other non-ASIO applications. Virtual cables are marked with the microphone name they
+  create, a hint line says which microphone/speaker to pick in the application, and the
+  Teams preset configures the common case.
+* **Settings**: network interface, sample rate, channels (2 x 2 stereo or 1 x 1 mono sum),
+  buffer, playout delay, PTP mode/domain, start with Windows, driver installation check,
+  config/log folder, about.
 
-Press **Apply** to save. The running driver and bridge pick up stream and clock changes on the
-fly; interface, sample rate or buffer changes restart them.
+**Apply** lights up only when there are unsaved changes and the footer says so. The running
+driver and bridge pick up stream and clock changes on the fly; interface, sample rate,
+channel or buffer changes restart them. The tray icon shows a warning balloon when the
+state degrades while the window is hidden (bridge error, clock or stream lost).
 
 ### Command line
 

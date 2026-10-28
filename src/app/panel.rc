@@ -1,7 +1,8 @@
 #include <windows.h>
+#include <commctrl.h>
 #include "panel_res.h"
 #ifndef AES67VSC_VERSION
-#define AES67VSC_VERSION "0.3.0"
+#define AES67VSC_VERSION "0.5.0"
 #endif
 
 1 RT_MANIFEST "panel.manifest"
@@ -11,80 +12,147 @@ IDI_TRAY_GREEN  ICON "../../res/tray_green.ico"
 IDI_TRAY_YELLOW ICON "../../res/tray_yellow.ico"
 IDI_TRAY_RED    ICON "../../res/tray_red.ico"
 
-IDD_MAIN DIALOGEX 0, 0, 470, 416
+IDD_MAIN DIALOGEX 0, 0, 520, 366
 STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX
 EXSTYLE WS_EX_ACCEPTFILES
 CAPTION "AES67 Virtual Sound Card"
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
-    GROUPBOX        "Device", -1, 7, 5, 456, 56
-    LTEXT           "Network interface:", -1, 15, 19, 62, 10
-    COMBOBOX        IDC_IFACE, 80, 17, 170, 120, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "Sample rate:", -1, 262, 19, 44, 10
-    COMBOBOX        IDC_RATE, 308, 17, 56, 80, CBS_DROPDOWNLIST | WS_TABSTOP
-    LTEXT           "Buffer (frames):", -1, 372, 19, 52, 10
-    COMBOBOX        IDC_BUFFER, 424, 17, 36, 120, CBS_DROPDOWN | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "PTP mode:", -1, 15, 40, 62, 10
-    COMBOBOX        IDC_PTPMODE, 80, 38, 70, 80, CBS_DROPDOWNLIST | WS_TABSTOP
-    LTEXT           "Domain:", -1, 158, 40, 28, 10
-    EDITTEXT        IDC_PTPDOMAIN, 188, 38, 24, 12, ES_NUMBER
-    LTEXT           "Link offset (ms):", -1, 222, 40, 56, 10
-    EDITTEXT        IDC_LINKOFF, 280, 38, 30, 12
-    LTEXT           "Channels:", -1, 320, 40, 34, 10
-    COMBOBOX        IDC_CHANNELS, 356, 38, 104, 60, CBS_DROPDOWNLIST | WS_TABSTOP
+    CONTROL         "", IDC_TABS, WC_TABCONTROL, WS_TABSTOP | WS_CLIPSIBLINGS, 7, 7, 506, 326
+    LTEXT           "", IDC_FOOT, 10, 344, 320, 10, SS_LEFT | SS_NOPREFIX
+    DEFPUSHBUTTON   "Apply", IDC_APPLY, 345, 340, 52, 16
+    PUSHBUTTON      "Hide", IDCANCEL, 403, 340, 52, 16
+    PUSHBUTTON      "Exit", IDC_EXIT, 461, 340, 52, 16
+END
 
-    GROUPBOX        "Receive from network (driver inputs 1-2)", -1, 7, 66, 226, 130
-    CONTROL         "Enabled", IDC_RX_ENABLE, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 79, 50, 10
-    PUSHBUTTON      "Load SDP file...", IDC_RX_LOAD, 150, 76, 76, 14
-    LTEXT           "", IDC_RX_INFO, 15, 93, 211, 60, SS_LEFT | SS_NOPREFIX
-    LTEXT           "Discovered (SAP):", -1, 15, 160, 60, 10
-    COMBOBOX        IDC_RX_DISCOVERED, 15, 170, 150, 120, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    PUSHBUTTON      "Use", IDC_RX_USE, 170, 169, 28, 14
-    PUSHBUTTON      "Clear", IDC_RX_CLEAR, 200, 169, 26, 14
-    LTEXT           "First stream channel for input 1:", -1, 15, 184, 110, 10
-    EDITTEXT        IDC_RX_CHOFF, 128, 182, 24, 12, ES_NUMBER
+IDD_PAGE_STATUS DIALOGEX 0, 0, 498, 300
+STYLE DS_SETFONT | DS_CONTROL | WS_CHILD
+FONT 9, "Segoe UI", 400, 0, 0x1
+BEGIN
+    CONTROL         "", IDC_DOT_MAIN, "Static", SS_OWNERDRAW, 12, 12, 12, 12
+    LTEXT           "", IDC_HEAD, 30, 10, 460, 14, SS_LEFT | SS_NOPREFIX
+    LTEXT           "", IDC_SUB, 30, 25, 460, 10, SS_LEFT | SS_NOPREFIX
 
-    GROUPBOX        "Transmit to network (driver outputs 1-2)", -1, 240, 66, 223, 130
-    CONTROL         "Enabled", IDC_TX_ENABLE, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 248, 79, 50, 10
-    CONTROL         "Announce via SAP", IDC_TX_SAP, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 320, 79, 80, 10
-    LTEXT           "Stream name:", -1, 248, 96, 50, 10
-    EDITTEXT        IDC_TX_NAME, 300, 94, 156, 12
-    LTEXT           "Multicast address:", -1, 248, 112, 60, 10
-    EDITTEXT        IDC_TX_DEST, 300, 110, 80, 12
-    LTEXT           "Port:", -1, 386, 112, 20, 10
-    EDITTEXT        IDC_TX_PORT, 406, 110, 36, 12, ES_NUMBER
-    LTEXT           "Encoding:", -1, 248, 128, 50, 10
-    COMBOBOX        IDC_TX_ENC, 300, 126, 50, 60, CBS_DROPDOWNLIST | WS_TABSTOP
-    LTEXT           "Packet time 1 ms (AES67)", -1, 356, 128, 104, 10
-    PUSHBUTTON      "Save SDP file...", IDC_TX_EXPORT, 248, 150, 76, 14
-    PUSHBUTTON      "Copy SDP to clipboard", IDC_TX_COPY, 330, 150, 90, 14
-    LTEXT           "Receivers (another PC with this driver, Dante/AES67 devices, Ravenna...) subscribe with this SDP.", -1, 248, 170, 210, 20
+    CONTROL         "", IDC_DOT_DRV, "Static", SS_OWNERDRAW, 14, 50, 8, 8
+    LTEXT           "ASIO driver", -1, 28, 49, 60, 10
+    LTEXT           "", IDC_VAL_DRV, 92, 49, 400, 20, SS_LEFT | SS_NOPREFIX
+    CONTROL         "", IDC_DOT_BR, "Static", SS_OWNERDRAW, 14, 74, 8, 8
+    LTEXT           "Audio bridge", -1, 28, 73, 60, 10
+    LTEXT           "", IDC_VAL_BR, 92, 73, 400, 20, SS_LEFT | SS_NOPREFIX
+    CONTROL         "", IDC_DOT_CLK, "Static", SS_OWNERDRAW, 14, 98, 8, 8
+    LTEXT           "Clock (PTP)", -1, 28, 97, 60, 10
+    LTEXT           "", IDC_VAL_CLK, 92, 97, 400, 20, SS_LEFT | SS_NOPREFIX
+    CONTROL         "", IDC_DOT_RX, "Static", SS_OWNERDRAW, 14, 122, 8, 8
+    LTEXT           "Incoming", -1, 28, 121, 60, 10
+    LTEXT           "", IDC_VAL_RX, 92, 121, 400, 20, SS_LEFT | SS_NOPREFIX
+    CONTROL         "", IDC_DOT_TX, "Static", SS_OWNERDRAW, 14, 146, 8, 8
+    LTEXT           "Outgoing", -1, 28, 145, 60, 10
+    LTEXT           "", IDC_VAL_TX, 92, 145, 400, 20, SS_LEFT | SS_NOPREFIX
 
-    GROUPBOX        "Windows audio bridge (Teams, browsers, any app)", -1, 7, 200, 456, 84
-    LTEXT           "Incoming stream (from network) plays on:", -1, 15, 215, 130, 10
-    COMBOBOX        IDC_BR_PLAY, 148, 213, 150, 160, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    PUSHBUTTON      "Start bridge", IDC_BR_START, 305, 212, 70, 14
-    PUSHBUTTON      "Teams preset", IDC_BR_TEAMS, 380, 212, 76, 14
-    LTEXT           "Outgoing stream (to network) taken from:", -1, 15, 233, 130, 10
-    COMBOBOX        IDC_BR_SOURCE, 148, 231, 150, 160, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    CONTROL         "Start bridge with this app", IDC_BR_AUTO, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 305, 232, 150, 10
-    CONTROL         "Start this app with Windows (hidden in the tray)", IDC_AUTORUN, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 250, 200, 10
-    LTEXT           "", IDC_BR_STATUS, 220, 250, 236, 12, SS_LEFT | SS_NOPREFIX
-    LTEXT           "", IDC_BR_HINT, 15, 264, 360, 18, SS_LEFT | SS_NOPREFIX
-    PUSHBUTTON      "Get VB-CABLE...", IDC_BR_GETCABLE, 380, 264, 76, 14
+    PUSHBUTTON      "Start bridge", IDC_ST_BRIDGE, 28, 178, 90, 16
+    PUSHBUTTON      "Teams preset...", IDC_ST_TEAMS, 124, 178, 90, 16
+    LTEXT           "", IDC_COUNTERS, 28, 204, 460, 30, SS_LEFT | SS_NOPREFIX
+    LTEXT           "Closing or minimising this window keeps everything running in the notification area. The tray icon shows the same colour as the indicator above.", IDC_ST_HINT, 28, 262, 460, 20, SS_LEFT | SS_NOPREFIX
+END
 
-    GROUPBOX        "Status", -1, 7, 288, 456, 98
-    LTEXT           "", IDC_STATUS, 15, 300, 440, 82, SS_LEFT | SS_NOPREFIX
+IDD_PAGE_STREAMS DIALOGEX 0, 0, 498, 300
+STYLE DS_SETFONT | DS_CONTROL | WS_CHILD
+FONT 9, "Segoe UI", 400, 0, 0x1
+BEGIN
+    GROUPBOX        "Incoming stream  (received from the network  ->  driver inputs / virtual microphone)", -1, 8, 6, 482, 118
+    CONTROL         "Receive enabled", IDC_RX_ENABLE, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 18, 20, 80, 10
+    PUSHBUTTON      "Load SDP file...", IDC_RX_LOAD, 380, 17, 100, 15
+    LTEXT           "", IDC_RX_INFO, 18, 36, 462, 36, SS_LEFT | SS_NOPREFIX
+    LTEXT           "Discovered on the network (SAP):", -1, 18, 78, 120, 10
+    COMBOBOX        IDC_RX_DISCOVERED, 18, 90, 290, 120, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    PUSHBUTTON      "Use", IDC_RX_USE, 314, 89, 40, 15
+    PUSHBUTTON      "Clear stream", IDC_RX_CLEAR, 380, 89, 100, 15
+    LTEXT           "Stream channel for input 1:", -1, 18, 108, 100, 10
+    EDITTEXT        IDC_RX_CHOFF, 120, 106, 28, 12, ES_NUMBER
+    LTEXT           "(for multichannel streams; input 2 takes the next channel)", -1, 154, 108, 220, 10
 
-    PUSHBUTTON      "Open config folder", IDC_OPENCFG, 7, 394, 80, 15
-    DEFPUSHBUTTON   "Apply", IDC_APPLY, 294, 394, 52, 15
-    PUSHBUTTON      "Hide", IDCANCEL, 352, 394, 52, 15
-    PUSHBUTTON      "Exit", IDC_EXIT, 410, 394, 52, 15
+    GROUPBOX        "Outgoing stream  (driver outputs / virtual speaker  ->  transmitted to the network)", -1, 8, 132, 482, 118
+    CONTROL         "Transmit enabled", IDC_TX_ENABLE, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 18, 146, 80, 10
+    CONTROL         "Announce via SAP so devices can discover it", IDC_TX_SAP, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 120, 146, 180, 10
+    LTEXT           "Stream name:", -1, 18, 166, 60, 10
+    EDITTEXT        IDC_TX_NAME, 80, 164, 200, 12
+    LTEXT           "Multicast address:", -1, 18, 184, 60, 10
+    EDITTEXT        IDC_TX_DEST, 80, 182, 90, 12
+    LTEXT           "Port:", -1, 180, 184, 20, 10
+    EDITTEXT        IDC_TX_PORT, 202, 182, 40, 12, ES_NUMBER
+    LTEXT           "Encoding:", -1, 18, 202, 60, 10
+    COMBOBOX        IDC_TX_ENC, 80, 200, 60, 60, CBS_DROPDOWNLIST | WS_TABSTOP
+    LTEXT           "1 ms packets, PTP media clock (AES67). Channel count follows the Settings tab.", -1, 150, 202, 330, 10
+    PUSHBUTTON      "Save SDP file...", IDC_TX_EXPORT, 18, 224, 100, 15
+    PUSHBUTTON      "Copy SDP to clipboard", IDC_TX_COPY, 124, 224, 110, 15
+    LTEXT           "Give the SDP to the receiver (Dante Controller, Ravenna, another PC with this driver).", -1, 244, 227, 240, 10
+
+    LTEXT           "Tip: drop an .sdp file anywhere on this window to load it as the incoming stream.", -1, 10, 262, 480, 10
+END
+
+IDD_PAGE_BRIDGE DIALOGEX 0, 0, 498, 300
+STYLE DS_SETFONT | DS_CONTROL | WS_CHILD
+FONT 9, "Segoe UI", 400, 0, 0x1
+BEGIN
+    LTEXT           "The bridge connects the AES67 streams to ordinary Windows audio devices, so applications that cannot use ASIO (Teams, Zoom, browsers, media players) can use them. Only devices that exist in Windows can be chosen; a virtual cable such as the free VB-CABLE provides the \"microphone\" and \"speaker\" those applications see.", IDC_BR_INTRO, 10, 8, 480, 30, SS_LEFT | SS_NOPREFIX
+
+    GROUPBOX        "Routing", -1, 8, 44, 482, 70
+    LTEXT           "Incoming stream (from network) plays on:", -1, 18, 60, 150, 10
+    COMBOBOX        IDC_BR_PLAY, 170, 58, 310, 160, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Outgoing stream (to network) is taken from:", -1, 18, 80, 150, 10
+    COMBOBOX        IDC_BR_SOURCE, 170, 78, 310, 160, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "", IDC_BR_HINT, 18, 97, 462, 12, SS_LEFT | SS_NOPREFIX
+
+    PUSHBUTTON      "Start bridge", IDC_BR_START, 8, 124, 90, 16
+    PUSHBUTTON      "Teams preset...", IDC_BR_TEAMS, 104, 124, 90, 16
+    PUSHBUTTON      "Get VB-CABLE...", IDC_BR_GETCABLE, 200, 124, 90, 16
+    LTEXT           "", IDC_BR_STATUS, 300, 127, 190, 12, SS_LEFT | SS_NOPREFIX
+
+    CONTROL         "Start the bridge automatically when this app starts", IDC_BR_AUTO, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 10, 150, 300, 10
+
+    GROUPBOX        "How applications see it", -1, 8, 170, 482, 92
+    LTEXT           "Teams preset configures the common case: incoming stream -> CABLE Input (apps record it as microphone \"CABLE Output\"); what the app plays -> transmitted.\n\nWith only the free VB-CABLE the outgoing side is the loopback of your speakers, so everything the PC plays is sent. For a Teams-only outgoing stream add a second cable (VB-CABLE A+B or Voicemeeter Banana); the preset detects it.", -1, 18, 184, 462, 70, SS_LEFT | SS_NOPREFIX
+END
+
+IDD_PAGE_SETTINGS DIALOGEX 0, 0, 498, 300
+STYLE DS_SETFONT | DS_CONTROL | WS_CHILD
+FONT 9, "Segoe UI", 400, 0, 0x1
+BEGIN
+    GROUPBOX        "Audio device", -1, 8, 6, 236, 112
+    LTEXT           "Network interface:", -1, 18, 22, 70, 10
+    COMBOBOX        IDC_IFACE, 90, 20, 144, 120, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Sample rate:", -1, 18, 42, 70, 10
+    COMBOBOX        IDC_RATE, 90, 40, 70, 80, CBS_DROPDOWNLIST | WS_TABSTOP
+    LTEXT           "Channels:", -1, 18, 62, 70, 10
+    COMBOBOX        IDC_CHANNELS, 90, 60, 110, 60, CBS_DROPDOWNLIST | WS_TABSTOP
+    LTEXT           "Buffer (frames):", -1, 18, 82, 70, 10
+    COMBOBOX        IDC_BUFFER, 90, 80, 60, 120, CBS_DROPDOWN | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Playout delay (ms):", -1, 18, 102, 70, 10
+    EDITTEXT        IDC_LINKOFF, 90, 100, 40, 12
+    LTEXT           "link offset; 4 default, 1-2 on a quiet LAN", -1, 134, 102, 108, 10
+
+    GROUPBOX        "Clock", -1, 254, 6, 236, 60
+    LTEXT           "PTP mode:", -1, 264, 22, 50, 10
+    COMBOBOX        IDC_PTPMODE, 316, 20, 100, 80, CBS_DROPDOWNLIST | WS_TABSTOP
+    LTEXT           "Domain:", -1, 264, 42, 50, 10
+    EDITTEXT        IDC_PTPDOMAIN, 316, 40, 30, 12, ES_NUMBER
+    LTEXT           "Automatic follows any grandmaster and becomes master only if none exists.", -1, 264, 54, 222, 10
+
+    GROUPBOX        "Startup", -1, 254, 74, 236, 44
+    CONTROL         "Start this app with Windows (hidden in the tray)", IDC_AUTORUN, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 264, 90, 220, 10
+    LTEXT           "Combine with the bridge autostart option to run unattended.", -1, 264, 104, 222, 10
+
+    GROUPBOX        "Maintenance", -1, 8, 128, 482, 50
+    PUSHBUTTON      "Check driver installation", IDC_CHECKDRV, 18, 144, 120, 16
+    PUSHBUTTON      "Open config && log folder", IDC_OPENCFG, 144, 144, 120, 16
+    PUSHBUTTON      "About / help", IDC_ABOUT, 270, 144, 90, 16
+
+    LTEXT           "Changes take effect when you press Apply. Stream, clock and bridge changes are picked up live; interface, sample rate, channel or buffer changes restart the audio engine (an open ASIO host is asked to reset).", -1, 10, 190, 480, 30, SS_LEFT | SS_NOPREFIX
 END
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 0,4,1,0
- PRODUCTVERSION 0,4,1,0
+ FILEVERSION 0,5,0,0
+ PRODUCTVERSION 0,5,0,0
  FILEOS VOS_NT_WINDOWS32
  FILETYPE VFT_APP
 BEGIN
@@ -92,7 +160,7 @@ BEGIN
     BEGIN
         BLOCK "040904b0"
         BEGIN
-            VALUE "FileDescription", "AES67 Virtual Sound Card control panel"
+            VALUE "FileDescription", "AES67 Virtual Sound Card"
             VALUE "FileVersion", AES67VSC_VERSION
             VALUE "InternalName", "aes67vsc-panel"
             VALUE "LegalCopyright", "MIT License"
