@@ -73,22 +73,41 @@ static void set_autorun(bool on) {
     RegCloseKey(k);
 }
 
+// ---------------------------------------------------------------- virtual cables
+// Playback devices that are virtual cables, and the recording device ("mic") they come out of.
+static std::string virtual_mic_for(const std::string& play_name) {
+    std::string l = lower(play_name);
+    if (l.find("cable-a input") != std::string::npos) return "CABLE-A Output";
+    if (l.find("cable-b input") != std::string::npos) return "CABLE-B Output";
+    if (l.find("cable input") != std::string::npos) return "CABLE Output";
+    if (l.find("voicemeeter aux input") != std::string::npos) return "Voicemeeter Aux Output";
+    if (l.find("voicemeeter vaio3 input") != std::string::npos) return "Voicemeeter VAIO3 Output";
+    if (l.find("voicemeeter input") != std::string::npos) return "Voicemeeter Output";
+    if (l.find("virtual") != std::string::npos && l.find("cable") != std::string::npos) return "(its recording side)";
+    return "";
+}
+static std::string annotate(const std::string& name) {
+    std::string mic = virtual_mic_for(name);
+    return mic.empty() ? name : name + "   [virtual cable -> mic \"" + mic + "\"]";
+}
+static std::string strip_annotation(const std::string& s) { size_t p = s.find("   ["); return p == std::string::npos ? s : s.substr(0, p); }
+
 // ---------------------------------------------------------------- bridge device combos
 // Entry 0 = default, 1 = none, then devices. Source list adds loopback entries for playback devices.
 static void fill_bridge_combos(HWND dlg) {
     g_devs = bridge_list_devices();
     std::vector<std::string> play{"Default playback device", "(do not play)"}, src{"Default recording device (microphone)", "(send silence)"};
     int psel = lower(g_cfg.bridge_play) == "none" ? 1 : 0, ssel = lower(g_cfg.bridge_source) == "none" ? 1 : 0;
-    for (auto& d : g_devs) if (d.render) { play.push_back(d.name); if (lower(g_cfg.bridge_play) != "default" && lower(g_cfg.bridge_play) != "none" && lower(d.name).find(lower(g_cfg.bridge_play)) != std::string::npos && psel < 2) psel = (int)play.size() - 1; }
+    for (auto& d : g_devs) if (d.render) { play.push_back(annotate(d.name)); if (lower(g_cfg.bridge_play) != "default" && lower(g_cfg.bridge_play) != "none" && lower(d.name).find(lower(g_cfg.bridge_play)) != std::string::npos && psel < 2) psel = (int)play.size() - 1; }
     for (auto& d : g_devs) if (!d.render) { src.push_back(d.name); if (!g_cfg.bridge_loopback && lower(g_cfg.bridge_source) != "default" && lower(g_cfg.bridge_source) != "none" && lower(d.name).find(lower(g_cfg.bridge_source)) != std::string::npos && ssel < 2) ssel = (int)src.size() - 1; }
     src.push_back("Loopback: default playback device (everything the PC plays)");
     if (g_cfg.bridge_loopback && lower(g_cfg.bridge_source) == "default") ssel = (int)src.size() - 1;
-    for (auto& d : g_devs) if (d.render) { src.push_back("Loopback: " + d.name); if (g_cfg.bridge_loopback && lower(g_cfg.bridge_source) != "default" && lower(d.name).find(lower(g_cfg.bridge_source)) != std::string::npos) ssel = (int)src.size() - 1; }
+    for (auto& d : g_devs) if (d.render) { std::string mic = virtual_mic_for(d.name); src.push_back("Loopback: " + d.name + (mic.empty() ? "" : "   [virtual cable: set it as the app's speaker]")); if (g_cfg.bridge_loopback && lower(g_cfg.bridge_source) != "default" && lower(d.name).find(lower(g_cfg.bridge_source)) != std::string::npos) ssel = (int)src.size() - 1; }
     combo_fill(dlg, IDC_BR_PLAY, play, psel);
     combo_fill(dlg, IDC_BR_SOURCE, src, ssel);
 }
 static void read_bridge_combos(HWND dlg) {
-    std::string p = get_text(dlg, IDC_BR_PLAY), s = get_text(dlg, IDC_BR_SOURCE);
+    std::string p = strip_annotation(get_text(dlg, IDC_BR_PLAY)), s = strip_annotation(get_text(dlg, IDC_BR_SOURCE));
     int pi = combo_sel(dlg, IDC_BR_PLAY), si = combo_sel(dlg, IDC_BR_SOURCE);
     g_cfg.bridge_play = pi == 0 ? "default" : pi == 1 ? "none" : p;
     if (si == 0) { g_cfg.bridge_source = "default"; g_cfg.bridge_loopback = false; }
@@ -376,6 +395,25 @@ static void refresh_status(HWND dlg) {
         set_text(dlg, IDC_BR_STATUS, bs.error.empty() ? b : "ERROR - see status");
     } else set_text(dlg, IDC_BR_STATUS, "");
     set_text(dlg, IDC_BR_START, br_on ? "Stop bridge" : "Start bridge");
+    // Hint: how apps see the chosen devices, or how to get a virtual cable.
+    {
+        bool any_cable = false;
+        for (auto& d : g_devs) if (d.render && !virtual_mic_for(d.name).empty()) any_cable = true;
+        std::string hint;
+        if (!any_cable) {
+            hint = "No virtual cable found, so the incoming stream can only go to real speakers. Windows cannot create a virtual microphone\n"
+                   "without a driver: install the free VB-CABLE (button on the right), reboot, and \"CABLE Input\" appears in the list above.";
+        } else {
+            std::string play = strip_annotation(get_text(dlg, IDC_BR_PLAY)), src = strip_annotation(get_text(dlg, IDC_BR_SOURCE));
+            std::string mic = virtual_mic_for(play);
+            hint = "Apps / Teams: microphone = " + (mic.empty() ? (play.rfind("Default", 0) == 0 ? std::string("(incoming goes to your speakers, not to a mic)") : play) : "\"" + mic + "\"");
+            if (src.rfind("Loopback: ", 0) == 0) {
+                std::string dev = src.substr(10);
+                hint += ";  speaker = " + (dev.rfind("default", 0) == 0 ? std::string("your normal speakers (everything the PC plays is sent)") : "\"" + dev + "\"");
+            } else hint += ";  outgoing comes from the recording device \"" + src + "\"";
+        }
+        set_text(dlg, IDC_BR_HINT, hint);
+    }
     // Tray state
     bool bad = (br_on && !bs.error.empty()) || (!br_on && !g_bridge_error.empty());
     if (bad) { state = 3; tip = "AES67 VSC: ERROR - " + (bs.error.empty() ? g_bridge_error : bs.error); }
@@ -459,6 +497,15 @@ static INT_PTR CALLBACK DlgProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
         case IDC_TX_EXPORT: do_export_sdp(dlg); return TRUE;
         case IDC_TX_COPY: do_copy_sdp(dlg); return TRUE;
         case IDC_OPENCFG: ShellExecuteA(dlg, "open", config_dir().c_str(), nullptr, nullptr, SW_SHOWNORMAL); return TRUE;
+        case IDC_BR_GETCABLE:
+            MessageBoxA(dlg, "VB-CABLE is a free, signed virtual audio cable by VB-Audio.\n\n1. Download and unzip it, right-click VBCABLE_Setup_x64.exe > Run as administrator, press Install Driver.\n"
+                             "2. Reboot.\n3. Back here, choose \"CABLE Input\" for the incoming stream (or press Teams preset).\n\n"
+                             "For a second, independent cable (so only Teams' audio goes out) add VB-CABLE A+B or Voicemeeter from the same site.", kTitle, MB_OK | MB_ICONINFORMATION);
+            ShellExecuteA(dlg, "open", "https://vb-audio.com/Cable/", nullptr, nullptr, SW_SHOWNORMAL);
+            return TRUE;
+        case IDC_BR_PLAY: case IDC_BR_SOURCE:
+            if (HIWORD(wp) == CBN_SELCHANGE) refresh_status(dlg);
+            return TRUE;
         case IDC_RATE:
             if (HIWORD(wp) == CBN_SELCHANGE) { int rs = combo_sel(dlg, IDC_RATE); int rate = rs == 0 ? 44100 : rs == 2 ? 96000 : 48000; int v = atoi(get_text(dlg, IDC_BUFFER).c_str()); fill_buffer_combo(dlg, rate, v); }
             return TRUE;

@@ -64,7 +64,11 @@ The window has five parts:
   network) is played and which device (or playback loopback) becomes the outgoing stream
   (transmitted to the network), press *Start bridge*, or
   press **Teams preset** which configures everything for a Teams/Zoom call (see below).
-  *Start bridge with this app* restarts it automatically at logon.
+  *Start bridge with this app* restarts it automatically at logon. The device lists can only
+  show devices Windows already has: for the incoming stream to appear as a **microphone**
+  you need a virtual cable such as the free VB-CABLE (button *Get VB-CABLE...*); the list
+  marks virtual cables with the recording device they come out of, and a hint line tells you
+  which microphone / speaker to pick in the application.
 * **Status**: what is running right now: the ASIO driver (inside an audio application), the
   bridge, PTP clock state and offset, received/lost packets, transmitted packets, errors.
 

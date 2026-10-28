@@ -37,6 +37,8 @@
 #define IDC_BR_AUTO       1044
 #define IDC_AUTORUN       1045
 #define IDC_BR_STATUS     1046
+#define IDC_BR_HINT       1047
+#define IDC_BR_GETCABLE   1048
 #define IDM_SHOW          2001
 #define IDM_BRIDGE        2002
 #define IDM_TEAMS         2003
