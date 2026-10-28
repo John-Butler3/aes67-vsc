@@ -606,7 +606,7 @@ static INT_PTR CALLBACK PageProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_CTLCOLORSTATIC: {
         HWND h = (HWND)lp;
         if (h == ctl(IDC_HEAD)) { SetBkMode((HDC)wp, TRANSPARENT); return (INT_PTR)GetSysColorBrush(COLOR_BTNFACE); }
-        if (h == ctl(IDC_SUB) || h == ctl(IDC_COUNTERS) || h == ctl(IDC_ST_HINT) || h == ctl(IDC_BR_HINT) || h == ctl(IDC_BR_INTRO)) { SetTextColor((HDC)wp, RGB(90, 90, 90)); SetBkMode((HDC)wp, TRANSPARENT); return (INT_PTR)GetSysColorBrush(COLOR_BTNFACE); }
+        if (h == ctl(IDC_SUB) || h == ctl(IDC_COUNTERS) || h == ctl(IDC_ST_HINT) || h == ctl(IDC_BR_HINT) || h == ctl(IDC_BR_INTRO) || h == ctl(IDC_BR_HOWTO)) { SetTextColor((HDC)wp, RGB(90, 90, 90)); SetBkMode((HDC)wp, TRANSPARENT); return (INT_PTR)GetSysColorBrush(COLOR_BTNFACE); }
         break;
     }
     }
@@ -638,6 +638,11 @@ static INT_PTR CALLBACK MainProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
         LOGFONTA lf{}; GetObjectA((HFONT)SendMessageA(dlg, WM_GETFONT, 0, 0), sizeof lf, &lf);
         lf.lfWeight = FW_SEMIBOLD; lf.lfHeight = (LONG)(lf.lfHeight * 1.5); g_font_head = CreateFontIndirectA(&lf);
         SendMessageA(ctl(IDC_HEAD), WM_SETFONT, (WPARAM)g_font_head, TRUE);
+        set_text(IDC_BR_INTRO, "The bridge connects the AES67 streams to ordinary Windows audio devices, so applications that cannot use ASIO (Teams, Zoom, browsers, media players) "
+                               "can use them. Only devices that exist in Windows can be chosen; a virtual cable such as the free VB-CABLE provides the \"microphone\" and \"speaker\" those applications see.");
+        set_text(IDC_BR_HOWTO, "Teams preset configures the common case: incoming stream -> CABLE Input (applications record it as microphone \"CABLE Output\"); what the application plays -> transmitted.\r\n\r\n"
+                               "With only the free VB-CABLE the outgoing side is the loopback of your speakers, so everything the PC plays is sent. For an application-only outgoing stream add a second cable "
+                               "(VB-CABLE A+B or Voicemeeter Banana); the preset detects it.");
         g_ifaces = list_interfaces();
         load_to_ui();
         { std::string err; g_sap.start(pick_interface(g_cfg.interface_ip).ipv4, true, err); }

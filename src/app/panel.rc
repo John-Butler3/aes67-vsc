@@ -94,7 +94,7 @@ IDD_PAGE_BRIDGE DIALOGEX 0, 0, 498, 300
 STYLE DS_SETFONT | DS_CONTROL | WS_CHILD
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
-    LTEXT           "The bridge connects the AES67 streams to ordinary Windows audio devices, so applications that cannot use ASIO (Teams, Zoom, browsers, media players) can use them. Only devices that exist in Windows can be chosen; a virtual cable such as the free VB-CABLE provides the \"microphone\" and \"speaker\" those applications see.", IDC_BR_INTRO, 10, 8, 480, 30, SS_LEFT | SS_NOPREFIX
+    LTEXT           "", IDC_BR_INTRO, 10, 8, 480, 30, SS_LEFT | SS_NOPREFIX
 
     GROUPBOX        "Routing", -1, 8, 44, 482, 70
     LTEXT           "Incoming stream (from network) plays on:", -1, 18, 60, 150, 10
@@ -111,7 +111,7 @@ BEGIN
     CONTROL         "Start the bridge automatically when this app starts", IDC_BR_AUTO, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 10, 150, 300, 10
 
     GROUPBOX        "How applications see it", -1, 8, 170, 482, 92
-    LTEXT           "Teams preset configures the common case: incoming stream -> CABLE Input (apps record it as microphone \"CABLE Output\"); what the app plays -> transmitted.\n\nWith only the free VB-CABLE the outgoing side is the loopback of your speakers, so everything the PC plays is sent. For a Teams-only outgoing stream add a second cable (VB-CABLE A+B or Voicemeeter Banana); the preset detects it.", -1, 18, 184, 462, 70, SS_LEFT | SS_NOPREFIX
+    LTEXT           "", IDC_BR_HOWTO, 18, 184, 462, 70, SS_LEFT | SS_NOPREFIX
 END
 
 IDD_PAGE_SETTINGS DIALOGEX 0, 0, 498, 300
@@ -151,8 +151,8 @@ BEGIN
 END
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 0,5,0,0
- PRODUCTVERSION 0,5,0,0
+ FILEVERSION 0,5,1,0
+ PRODUCTVERSION 0,5,1,0
  FILEOS VOS_NT_WINDOWS32
  FILETYPE VFT_APP
 BEGIN

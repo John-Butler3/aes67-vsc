@@ -75,6 +75,7 @@
 #define IDC_BR_HINT       1047
 #define IDC_BR_GETCABLE   1048
 #define IDC_BR_INTRO      1049
+#define IDC_BR_HOWTO      1052
 
 // tray menu
 #define IDM_SHOW          2001
