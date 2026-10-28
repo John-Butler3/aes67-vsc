@@ -38,7 +38,8 @@ Only 64-bit hosts are supported by the prebuilt package.
 ## Use
 
 Start **aes67vsc-panel.exe** (the ASIO *Control Panel* button in your host opens it too). It is a
-tray application: closing or minimising the window hides it into the notification area, the icon
+tray application with a light and a dark theme (follows Windows by default, selectable under
+Settings > Appearance): closing or minimising the window hides it into the notification area, the icon
 colour shows the overall state at a glance, and the right-click menu starts/stops the bridge or
 exits. Tick *Start this app with Windows* to have it run at logon, hidden in the tray.
 
@@ -49,7 +50,7 @@ exits. Tick *Start this app with Windows* to have it run at logon, hidden in the
 | yellow | streaming but something is off: no PTP lock, no receive data, or driver and bridge both running |
 | red | the bridge reported an error (hover for the message, open the window for details) |
 
-The window has four tabs:
+The window has a sidebar with four pages:
 
 * **Status**: a dashboard. One headline with a coloured indicator (the tray icon shows the
   same colour), then one line each for the ASIO driver, the audio bridge, the PTP clock,
@@ -64,8 +65,8 @@ The window has four tabs:
   create, a hint line says which microphone/speaker to pick in the application, and the
   Teams preset configures the common case.
 * **Settings**: network interface, sample rate, channels (2 x 2 stereo or 1 x 1 mono sum),
-  buffer, playout delay, PTP mode/domain, start with Windows, driver installation check,
-  config/log folder, about.
+  buffer, playout delay, PTP mode/domain, appearance (light/dark), start with Windows, driver
+  installation check, config/log folder, about.
 
 **Apply** lights up only when there are unsaved changes and the footer says so. The running
 driver and bridge pick up stream and clock changes on the fly; interface, sample rate,
@@ -156,11 +157,15 @@ programme audio rather than speech.
   packets are sent at their nominal time from the engine thread.
 * Latency: input = buffer + link offset; output = buffer + 1 packet (+ the receiver's own
   link offset).
-* PTP: end-to-end delay mechanism, multicast 224.0.1.129, two-step and one-step masters,
-  software timestamps (typically within a few tens of microseconds on a LAN). Default
-  profile and AES67 media profile intervals are both accepted. In *Automatic* mode the
-  driver follows any grandmaster it sees and becomes master (clockClass 248, priority 128)
-  only if none appears within a few seconds; a real grandmaster always wins.
+* PTP: end-to-end delay mechanism, multicast 224.0.1.129, two-step and one-step masters.
+  Receive timestamps come from the network stack where the OS offers them (Linux
+  SO_TIMESTAMPNS, Windows 10 2004+ SIO_TIMESTAMPING), otherwise from user mode; the status
+  view says which. A min-delay prefilter and an outlier gate feed a PI servo; lock is
+  declared after one second of small error and dropped only after three bad seconds. Default
+  profile and AES67 media profile intervals are both accepted. In *Automatic* mode the driver
+  follows any grandmaster it sees, including devices that send Sync without Announce, and
+  becomes master (clockClass 248, priority1 200) only if none appears within a few seconds;
+  any real device, which announces priority1 128, always wins.
 
 ## Interoperability notes
 

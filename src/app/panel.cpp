@@ -36,7 +36,8 @@ enum { PAGE_STATUS = 0, PAGE_STREAMS, PAGE_BRIDGE, PAGE_SETTINGS, PAGE_COUNT };
 
 static HINSTANCE g_inst;
 static HWND g_main, g_pages[PAGE_COUNT];
-static HFONT g_font_head;
+static int g_page = PAGE_STATUS;
+static HFONT g_font_head, g_font_section, g_font_title, g_font_nav_bold;
 static Config g_cfg;
 static std::vector<NetInterface> g_ifaces;
 static SapAgent g_sap;
@@ -50,20 +51,71 @@ static NOTIFYICONDATAA g_nid{};
 static int g_tray_state = -1;
 static bool g_balloon_shown = false, g_dirty = false, g_loading = false;
 static std::map<int, COLORREF> g_dot_color;
+static std::map<int, bool> g_checks;      // owner-drawn check boxes
 static int g_last_notified_state = -1;
+static int g_sidebar_px = 0;
 
-// Colours (RGB) for the state dots.
-static const COLORREF C_GREY = RGB(160, 160, 160), C_GREEN = RGB(52, 168, 83), C_YELLOW = RGB(241, 180, 24), C_RED = RGB(217, 48, 37), C_BLUE = RGB(26, 115, 232);
+// ---------------------------------------------------------------- theme
+struct Theme {
+    COLORREF side, panel, text, subtext, line, input_bg, input_text, accent, accent_text, btn, btn_border, nav_active;
+    bool dark;
+};
+static Theme g_t;
+static HBRUSH g_br_side, g_br_panel, g_br_input, g_br_btn;
+static const COLORREF C_GREY = RGB(160, 160, 160), C_GREEN = RGB(52, 168, 83), C_YELLOW = RGB(241, 180, 24), C_RED = RGB(217, 48, 37);
 
-// ---------------------------------------------------------------- control helpers (controls live on tab pages)
+static bool system_dark() {
+    HKEY k; DWORD v = 1, len = sizeof v;
+    if (RegOpenKeyExA(HKEY_CURRENT_USER, "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", 0, KEY_READ, &k) != ERROR_SUCCESS) return false;
+    RegQueryValueExA(k, "AppsUseLightTheme", nullptr, nullptr, (BYTE*)&v, &len);
+    RegCloseKey(k);
+    return v == 0;
+}
+static void set_window_theme(HWND h, const wchar_t* name) {
+    static HMODULE ux = LoadLibraryW(L"uxtheme.dll");
+    typedef HRESULT (WINAPI *Fn)(HWND, LPCWSTR, LPCWSTR);
+    static Fn fn = ux ? (Fn)GetProcAddress(ux, "SetWindowTheme") : nullptr;
+    if (fn) fn(h, name, nullptr);
+}
+static void set_dark_titlebar(HWND h, bool dark) {
+    static HMODULE dwm = LoadLibraryW(L"dwmapi.dll");
+    typedef HRESULT (WINAPI *Fn)(HWND, DWORD, LPCVOID, DWORD);
+    static Fn fn = dwm ? (Fn)GetProcAddress(dwm, "DwmSetWindowAttribute") : nullptr;
+    if (!fn) return;
+    BOOL v = dark ? TRUE : FALSE;
+    if (FAILED(fn(h, 20, &v, sizeof v))) fn(h, 19, &v, sizeof v);
+}
+static BOOL CALLBACK theme_child(HWND h, LPARAM) {
+    char cls[32] = {0}; GetClassNameA(h, cls, sizeof cls);
+    std::string c = cls;
+    if (c == "ComboBox") set_window_theme(h, g_t.dark ? L"DarkMode_CFD" : L"Explorer");
+    else if (c == "Edit") set_window_theme(h, g_t.dark ? L"DarkMode_Explorer" : L"Explorer");
+    else if (c == "ScrollBar") set_window_theme(h, g_t.dark ? L"DarkMode_Explorer" : L"Explorer");
+    return TRUE;
+}
+static void apply_theme() {
+    bool dark = g_cfg.theme == "dark" || (g_cfg.theme == "auto" && system_dark());
+    if (dark) g_t = {RGB(27, 27, 31), RGB(38, 38, 43), RGB(236, 236, 236), RGB(163, 163, 168), RGB(58, 58, 64), RGB(31, 31, 36), RGB(236, 236, 236), RGB(76, 141, 255), RGB(255, 255, 255), RGB(51, 51, 58), RGB(74, 74, 82), RGB(47, 58, 82), true};
+    else      g_t = {RGB(237, 238, 240), RGB(255, 255, 255), RGB(31, 31, 31), RGB(107, 107, 107), RGB(227, 227, 227), RGB(255, 255, 255), RGB(31, 31, 31), RGB(47, 111, 237), RGB(255, 255, 255), RGB(243, 244, 246), RGB(208, 211, 216), RGB(221, 230, 247), false};
+    for (HBRUSH* b : {&g_br_side, &g_br_panel, &g_br_input, &g_br_btn}) if (*b) DeleteObject(*b);
+    g_br_side = CreateSolidBrush(g_t.side); g_br_panel = CreateSolidBrush(g_t.panel); g_br_input = CreateSolidBrush(g_t.input_bg); g_br_btn = CreateSolidBrush(g_t.btn);
+    if (!g_main) return;
+    set_dark_titlebar(g_main, dark);
+    EnumChildWindows(g_main, theme_child, 0);
+    for (HWND p : g_pages) if (p) EnumChildWindows(p, theme_child, 0);
+    RedrawWindow(g_main, nullptr, nullptr, RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_FRAME);
+}
+
+// ---------------------------------------------------------------- control helpers (controls live on pages)
 static HWND ctl(int id) {
     for (HWND p : g_pages) { if (p) { HWND h = GetDlgItem(p, id); if (h) return h; } }
     return GetDlgItem(g_main, id);
 }
 static std::string get_text(int id) { char buf[2048] = {0}; GetWindowTextA(ctl(id), buf, sizeof buf); return buf; }
 static void set_text(int id, const std::string& s) { if (get_text(id) != s) SetWindowTextA(ctl(id), s.c_str()); }
-static bool get_check(int id) { return Button_GetCheck(ctl(id)) == BST_CHECKED; }
-static void set_check(int id, bool on) { Button_SetCheck(ctl(id), on ? BST_CHECKED : BST_UNCHECKED); }
+static bool is_checkbox(int id) { return id == IDC_RX_ENABLE || id == IDC_TX_ENABLE || id == IDC_TX_SAP || id == IDC_BR_AUTO || id == IDC_AUTORUN; }
+static bool get_check(int id) { return g_checks[id]; }
+static void set_check(int id, bool on) { if (g_checks[id] != on) { g_checks[id] = on; InvalidateRect(ctl(id), nullptr, TRUE); } }
 static void combo_fill(int id, const std::vector<std::string>& items, int sel) {
     HWND h = ctl(id);
     SendMessageA(h, CB_RESETCONTENT, 0, 0);
@@ -80,7 +132,8 @@ static void set_dirty(bool d) {
     if (g_loading) return;
     g_dirty = d;
     EnableWindow(ctl(IDC_APPLY), d);
-    set_text(IDC_FOOT, d ? "Unsaved changes - press Apply to save and apply them." : std::string("Version ") + AES67VSC_VERSION + "   -   settings in " + Config::default_path());
+    InvalidateRect(ctl(IDC_APPLY), nullptr, TRUE);
+    set_text(IDC_FOOT, d ? "Unsaved changes - press Apply to save and apply them." : "");
 }
 static std::string human(uint32_t n) {
     char b[32];
@@ -180,6 +233,7 @@ static void load_to_ui() {
     combo_fill(IDC_CHANNELS, {"2 x 2 stereo", "1 x 1 mono (sum)"}, g_cfg.channels == 1 ? 1 : 0);
     fill_buffer_combo(g_cfg.sample_rate, g_cfg.buffer_frames);
     combo_fill(IDC_PTPMODE, {"Automatic", "Follow only", "Master", "Off"}, (int)g_cfg.ptp_mode);
+    combo_fill(IDC_THEME, {"Follow Windows", "Light", "Dark"}, g_cfg.theme == "light" ? 1 : g_cfg.theme == "dark" ? 2 : 0);
     set_text(IDC_PTPDOMAIN, std::to_string(g_cfg.ptp_domain));
     char lo[32]; snprintf(lo, sizeof lo, "%g", g_cfg.link_offset_ms); set_text(IDC_LINKOFF, lo);
     set_check(IDC_RX_ENABLE, g_cfg.rx_enabled && !g_cfg.rx.dest.empty());
@@ -207,6 +261,7 @@ static bool ui_to_cfg(std::string& err) {
     c.buffer_frames = atoi(get_text(IDC_BUFFER).c_str());
     c.ptp_mode = (PtpMode)std::max(0, combo_sel(IDC_PTPMODE));
     c.ptp_domain = atoi(get_text(IDC_PTPDOMAIN).c_str());
+    { int t = combo_sel(IDC_THEME); c.theme = t == 1 ? "light" : t == 2 ? "dark" : "auto"; }
     c.link_offset_ms = atof(get_text(IDC_LINKOFF).c_str());
     c.rx_enabled = get_check(IDC_RX_ENABLE);
     c.rx_channel_offset = std::max(0, atoi(get_text(IDC_RX_CHOFF).c_str()) - 1);
@@ -237,10 +292,12 @@ static bool apply() {
     if (!g_cfg.save()) { MessageBoxA(g_main, ("Cannot write " + Config::default_path()).c_str(), kTitle, MB_OK | MB_ICONERROR); return false; }
     set_autorun(get_check(IDC_AUTORUN));
     load_to_ui();
+    apply_theme();
     std::string e; g_sap.stop(); g_sap.start(pick_interface(g_cfg.interface_ip).ipv4, true, e);
     return true;
 }
 
+static void select_page(int i);
 // ---------------------------------------------------------------- SDP import / export
 static bool import_sdp_text(const std::string& text, const std::string& source_desc) {
     StreamDesc d; std::string err;
@@ -252,8 +309,7 @@ static bool import_sdp_text(const std::string& text, const std::string& source_d
     g_cfg.rx = d; g_cfg.rx_sdp_text = text; g_cfg.rx_enabled = true;
     load_to_ui();
     set_dirty(true);
-    TabCtrl_SetCurSel(ctl(IDC_TABS), PAGE_STREAMS);
-    for (int i = 0; i < PAGE_COUNT; i++) ShowWindow(g_pages[i], i == PAGE_STREAMS ? SW_SHOW : SW_HIDE);
+    select_page(PAGE_STREAMS);
     if (!notes.empty()) MessageBoxA(g_main, (source_desc + "\n\n" + notes + "\nPress Apply to save.").c_str(), kTitle, MB_OK | MB_ICONINFORMATION);
     return true;
 }
@@ -510,7 +566,9 @@ static void hide_window() {
     if (!g_balloon_shown) { g_balloon_shown = true; tray_balloon("Still running here. Double-click the icon to open, right-click for the menu.", false); }
 }
 static void select_page(int i) {
+    g_page = i;
     for (int k = 0; k < PAGE_COUNT; k++) ShowWindow(g_pages[k], k == i ? SW_SHOW : SW_HIDE);
+    for (int k = 0; k < PAGE_COUNT; k++) InvalidateRect(ctl(IDC_NAV0 + k), nullptr, TRUE);
     if (i == PAGE_STREAMS) refresh_discovered();
 }
 static void tray_menu() {
@@ -530,22 +588,114 @@ static void tray_menu() {
     DestroyMenu(m);
 }
 static void do_exit() { bridge_stop(); tray_remove(); g_sap.stop(); DestroyWindow(g_main); PostQuitMessage(0); }
+
+// ---------------------------------------------------------------- owner drawing
+static COLORREF shade(COLORREF c, double f) {
+    auto ch = [&](int v) { int r = (int)(v * f); return (BYTE)std::max(0, std::min(255, r)); };
+    return RGB(ch(GetRValue(c)), ch(GetGValue(c)), ch(GetBValue(c)));
+}
+static void fill_round(HDC dc, RECT r, COLORREF fill, COLORREF border, int radius) {
+    HBRUSH b = CreateSolidBrush(fill); HPEN p = CreatePen(PS_SOLID, 1, border);
+    HGDIOBJ ob = SelectObject(dc, b), op = SelectObject(dc, p);
+    RoundRect(dc, r.left, r.top, r.right, r.bottom, radius, radius);
+    SelectObject(dc, ob); SelectObject(dc, op); DeleteObject(b); DeleteObject(p);
+}
 static void draw_dot(const DRAWITEMSTRUCT* d) {
-    COLORREF c = g_dot_color.count(d->CtlID) ? g_dot_color[d->CtlID] : C_GREY;
+    COLORREF c = g_dot_color.count((int)d->CtlID) ? g_dot_color[(int)d->CtlID] : C_GREY;
     RECT r = d->rcItem;
-    FillRect(d->hDC, &r, (HBRUSH)(COLOR_BTNFACE + 1));
-    HBRUSH br = CreateSolidBrush(c);
-    HPEN pen = CreatePen(PS_SOLID, 1, RGB(GetRValue(c) * 2 / 3, GetGValue(c) * 2 / 3, GetBValue(c) * 2 / 3));
-    HGDIOBJ ob = SelectObject(d->hDC, br), op = SelectObject(d->hDC, pen);
+    FillRect(d->hDC, &r, g_br_panel);
     int w = r.right - r.left, h = r.bottom - r.top, s = std::min(w, h);
     int x = r.left + (w - s) / 2, y = r.top + (h - s) / 2;
+    HBRUSH br = CreateSolidBrush(c); HPEN pen = CreatePen(PS_SOLID, 1, shade(c, 0.75));
+    HGDIOBJ ob = SelectObject(d->hDC, br), op = SelectObject(d->hDC, pen);
     Ellipse(d->hDC, x, y, x + s, y + s);
-    SelectObject(d->hDC, ob); SelectObject(d->hDC, op);
-    DeleteObject(br); DeleteObject(pen);
+    SelectObject(d->hDC, ob); SelectObject(d->hDC, op); DeleteObject(br); DeleteObject(pen);
+}
+static void draw_line(const DRAWITEMSTRUCT* d) {
+    HBRUSH b = CreateSolidBrush(g_t.line); FillRect(d->hDC, &d->rcItem, b); DeleteObject(b);
+}
+static void draw_button(const DRAWITEMSTRUCT* d) {
+    int id = (int)d->CtlID;
+    char text[256] = {0}; GetWindowTextA(d->hwndItem, text, sizeof text);
+    RECT r = d->rcItem;
+    bool nav = id >= IDC_NAV0 && id <= IDC_NAV3;
+    bool pressed = (d->itemState & ODS_SELECTED) != 0, disabled = (d->itemState & ODS_DISABLED) != 0, focus = (d->itemState & ODS_FOCUS) != 0;
+    HBRUSH bg = nav ? g_br_side : (GetParent(d->hwndItem) == g_main ? g_br_panel : g_br_panel);
+    FillRect(d->hDC, &r, bg);
+    SetBkMode(d->hDC, TRANSPARENT);
+    if (nav) {
+        bool active = (id - IDC_NAV0) == g_page;
+        if (active) {
+            fill_round(d->hDC, r, g_t.nav_active, g_t.nav_active, 6);
+            RECT bar = {r.left + 2, r.top + 4, r.left + 5, r.bottom - 4};
+            HBRUSH ab = CreateSolidBrush(g_t.accent); FillRect(d->hDC, &bar, ab); DeleteObject(ab);
+        } else if (pressed) fill_round(d->hDC, r, shade(g_t.side, g_t.dark ? 1.3 : 0.94), g_t.side, 6);
+        SetTextColor(d->hDC, disabled ? g_t.subtext : g_t.text);
+        HGDIOBJ of = SelectObject(d->hDC, active ? g_font_nav_bold : (HFONT)SendMessageA(d->hwndItem, WM_GETFONT, 0, 0));
+        RECT tr = r; tr.left += 14;
+        DrawTextA(d->hDC, text, -1, &tr, DT_SINGLELINE | DT_VCENTER | DT_LEFT | DT_NOPREFIX);
+        SelectObject(d->hDC, of);
+        return;
+    }
+    if (is_checkbox(id)) {
+        int h = r.bottom - r.top, box = std::min(h, 15);
+        RECT b = {r.left, r.top + (h - box) / 2, r.left + box, r.top + (h - box) / 2 + box};
+        bool on = g_checks[id];
+        fill_round(d->hDC, b, on ? g_t.accent : g_t.input_bg, on ? g_t.accent : g_t.btn_border, 3);
+        if (on) {
+            HPEN p = CreatePen(PS_SOLID, 2, g_t.accent_text); HGDIOBJ op = SelectObject(d->hDC, p);
+            int x = b.left, y = b.top, s = box;
+            MoveToEx(d->hDC, x + s * 22 / 100, y + s * 52 / 100, nullptr); LineTo(d->hDC, x + s * 42 / 100, y + s * 72 / 100); LineTo(d->hDC, x + s * 78 / 100, y + s * 30 / 100);
+            SelectObject(d->hDC, op); DeleteObject(p);
+        }
+        SetTextColor(d->hDC, disabled ? g_t.subtext : g_t.text);
+        RECT tr = r; tr.left = b.right + 6;
+        DrawTextA(d->hDC, text, -1, &tr, DT_SINGLELINE | DT_VCENTER | DT_LEFT | DT_NOPREFIX);
+        if (focus) { RECT fr = tr; fr.right = fr.left + 4 + (int)strlen(text) * 6; }
+        return;
+    }
+    bool primary = id == IDC_APPLY || id == IDC_ST_BRIDGE || id == IDC_BR_START || id == IDC_RX_LOAD;
+    COLORREF fill = primary ? g_t.accent : g_t.btn, border = primary ? g_t.accent : g_t.btn_border, txt = primary ? g_t.accent_text : g_t.text;
+    if (disabled) { fill = g_t.dark ? RGB(45, 45, 50) : RGB(235, 236, 238); border = g_t.btn_border; txt = g_t.subtext; }
+    else if (pressed) { fill = shade(fill, 0.85); }
+    fill_round(d->hDC, r, fill, border, 6);
+    SetTextColor(d->hDC, txt);
+    DrawTextA(d->hDC, text, -1, &r, DT_SINGLELINE | DT_VCENTER | DT_CENTER | DT_NOPREFIX);
+    if (focus && !disabled) { RECT fr = r; InflateRect(&fr, -3, -3); DrawFocusRect(d->hDC, &fr); }
+}
+static void draw_item(const DRAWITEMSTRUCT* d) {
+    int id = (int)d->CtlID;
+    if (d->CtlType == ODT_BUTTON) draw_button(d);
+    else if (id >= IDC_LINE_BASE && id < IDC_LINE_BASE + 20) draw_line(d);
+    else draw_dot(d);
+}
+// Colour handling shared by the main window and the pages.
+static INT_PTR ctl_color(HWND owner, UINT msg, HDC dc, HWND h) {
+    bool side = owner == g_main;
+    HBRUSH bg = side ? g_br_side : g_br_panel;
+    int id = GetDlgCtrlID(h);
+    switch (msg) {
+    case WM_CTLCOLORDLG: return (INT_PTR)bg;
+    case WM_CTLCOLORSTATIC: {
+        bool sub = id == IDC_SUB || id == IDC_COUNTERS || id == IDC_ST_HINT || id == IDC_BR_HINT || id == IDC_BR_INTRO || id == IDC_BR_HOWTO || id == IDC_APPSUB || id == IDC_VERSION || id == IDC_FOOT || id == IDC_BR_STATUS || id == IDC_RX_INFO;
+        char cls[16] = {0}; GetClassNameA(h, cls, sizeof cls);
+        if (std::string(cls) == "Edit") { SetTextColor(dc, g_t.subtext); SetBkColor(dc, g_t.input_bg); return (INT_PTR)g_br_input; }  // read-only edits
+        SetTextColor(dc, sub ? g_t.subtext : g_t.text);
+        if (id == IDC_APPTITLE) SetTextColor(dc, g_t.accent);
+        if (id == IDC_FOOT && g_dirty) SetTextColor(dc, g_t.dark ? RGB(255, 200, 90) : RGB(176, 110, 0));
+        SetBkColor(dc, side ? g_t.side : g_t.panel);
+        return (INT_PTR)bg;
+    }
+    case WM_CTLCOLOREDIT: case WM_CTLCOLORLISTBOX: SetTextColor(dc, g_t.input_text); SetBkColor(dc, g_t.input_bg); return (INT_PTR)g_br_input;
+    case WM_CTLCOLORBTN: return (INT_PTR)bg;
+    }
+    return 0;
 }
 
 // Shared command handling for all pages and the main window.
 static bool on_command(int id, int code) {
+    if (is_checkbox(id) && code == BN_CLICKED) { g_checks[id] = !g_checks[id]; InvalidateRect(ctl(id), nullptr, TRUE); set_dirty(true); if (id == IDC_RX_ENABLE || id == IDC_TX_ENABLE) refresh_status(); return true; }
+    if (id >= IDC_NAV0 && id <= IDC_NAV3 && code == BN_CLICKED) { select_page(id - IDC_NAV0); return true; }
     switch (id) {
     case IDC_RX_LOAD: do_load_sdp(); return true;
     case IDC_RX_USE: { int i = combo_sel(IDC_RX_DISCOVERED); if (i >= 0 && i < (int)g_found.size()) import_sdp_text(g_found[i].sdp, "Selected stream announced by " + g_found[i].origin_ip); return true; }
@@ -587,11 +737,12 @@ static bool on_command(int id, int code) {
     // Anything else that edits a setting marks the configuration dirty.
     if (code == EN_CHANGE || code == CBN_SELCHANGE || code == CBN_EDITCHANGE || code == BN_CLICKED) {
         switch (id) {
-        case IDC_IFACE: case IDC_BUFFER: case IDC_LINKOFF: case IDC_PTPMODE: case IDC_PTPDOMAIN: case IDC_CHANNELS: case IDC_AUTORUN:
+        case IDC_IFACE: case IDC_BUFFER: case IDC_LINKOFF: case IDC_PTPMODE: case IDC_PTPDOMAIN: case IDC_CHANNELS: case IDC_AUTORUN: case IDC_THEME:
         case IDC_RX_ENABLE: case IDC_RX_CHOFF: case IDC_TX_ENABLE: case IDC_TX_NAME: case IDC_TX_DEST: case IDC_TX_PORT: case IDC_TX_ENC: case IDC_TX_SAP:
         case IDC_BR_PLAY: case IDC_BR_SOURCE: case IDC_BR_AUTO:
             set_dirty(true);
             if (id == IDC_BR_PLAY || id == IDC_BR_SOURCE) refresh_status();
+            if (id == IDC_THEME) { int t = combo_sel(IDC_THEME); g_cfg.theme = t == 1 ? "light" : t == 2 ? "dark" : "auto"; apply_theme(); }
             return true;
         }
     }
@@ -602,13 +753,10 @@ static INT_PTR CALLBACK PageProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
     case WM_INITDIALOG: return TRUE;
     case WM_COMMAND: return on_command(LOWORD(wp), HIWORD(wp)) ? TRUE : FALSE;
-    case WM_DRAWITEM: draw_dot((const DRAWITEMSTRUCT*)lp); return TRUE;
-    case WM_CTLCOLORSTATIC: {
-        HWND h = (HWND)lp;
-        if (h == ctl(IDC_HEAD)) { SetBkMode((HDC)wp, TRANSPARENT); return (INT_PTR)GetSysColorBrush(COLOR_BTNFACE); }
-        if (h == ctl(IDC_SUB) || h == ctl(IDC_COUNTERS) || h == ctl(IDC_ST_HINT) || h == ctl(IDC_BR_HINT) || h == ctl(IDC_BR_INTRO) || h == ctl(IDC_BR_HOWTO)) { SetTextColor((HDC)wp, RGB(90, 90, 90)); SetBkMode((HDC)wp, TRANSPARENT); return (INT_PTR)GetSysColorBrush(COLOR_BTNFACE); }
-        break;
-    }
+    case WM_DRAWITEM: draw_item((const DRAWITEMSTRUCT*)lp); return TRUE;
+    case WM_CTLCOLORDLG: case WM_CTLCOLORSTATIC: case WM_CTLCOLOREDIT: case WM_CTLCOLORLISTBOX: case WM_CTLCOLORBTN:
+        return ctl_color(dlg, msg, (HDC)wp, (HWND)lp);
+    case WM_ERASEBKGND: { RECT r; GetClientRect(dlg, &r); FillRect((HDC)wp, &r, g_br_panel); return TRUE; }
     }
     return FALSE;
 }
@@ -620,31 +768,32 @@ static INT_PTR CALLBACK MainProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
         g_main = dlg;
         HICON ic = LoadIconA(g_inst, MAKEINTRESOURCEA(IDI_APP));
         if (ic) { SendMessageA(dlg, WM_SETICON, ICON_BIG, (LPARAM)ic); SendMessageA(dlg, WM_SETICON, ICON_SMALL, (LPARAM)ic); }
-        // Tabs and pages
-        HWND tabs = GetDlgItem(dlg, IDC_TABS);
-        const char* names[PAGE_COUNT] = {"Status", "Streams", "Bridge", "Settings"};
+        // Geometry: sidebar 100 dlu wide, pages at (104, 8) sized 448 x 340 dlu.
+        RECT side = {0, 0, 100, 8}; MapDialogRect(dlg, &side); g_sidebar_px = side.right;
+        RECT pr = {104, 8, 104 + 448, 8 + 340}; MapDialogRect(dlg, &pr);
         const int ids[PAGE_COUNT] = {IDD_PAGE_STATUS, IDD_PAGE_STREAMS, IDD_PAGE_BRIDGE, IDD_PAGE_SETTINGS};
         for (int i = 0; i < PAGE_COUNT; i++) {
-            TCITEMA it{}; it.mask = TCIF_TEXT; it.pszText = (LPSTR)names[i];
-            TabCtrl_InsertItem(tabs, i, &it);
-        }
-        RECT rc; GetClientRect(tabs, &rc); TabCtrl_AdjustRect(tabs, FALSE, &rc);
-        MapWindowPoints(tabs, dlg, (POINT*)&rc, 2);
-        for (int i = 0; i < PAGE_COUNT; i++) {
             g_pages[i] = CreateDialogParamA(g_inst, MAKEINTRESOURCEA(ids[i]), dlg, PageProc, 0);
-            SetWindowPos(g_pages[i], HWND_TOP, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, SWP_NOACTIVATE);
+            SetWindowPos(g_pages[i], HWND_TOP, pr.left, pr.top, pr.right - pr.left, pr.bottom - pr.top, SWP_NOACTIVATE);
         }
-        // Fonts for the headline
+        // Fonts
         LOGFONTA lf{}; GetObjectA((HFONT)SendMessageA(dlg, WM_GETFONT, 0, 0), sizeof lf, &lf);
-        lf.lfWeight = FW_SEMIBOLD; lf.lfHeight = (LONG)(lf.lfHeight * 1.5); g_font_head = CreateFontIndirectA(&lf);
+        LOGFONTA f = lf; f.lfWeight = FW_SEMIBOLD; f.lfHeight = (LONG)(lf.lfHeight * 1.5); g_font_head = CreateFontIndirectA(&f);
+        f = lf; f.lfWeight = FW_SEMIBOLD; f.lfHeight = (LONG)(lf.lfHeight * 1.15); g_font_section = CreateFontIndirectA(&f);
+        f = lf; f.lfWeight = FW_BOLD; f.lfHeight = (LONG)(lf.lfHeight * 1.35); g_font_title = CreateFontIndirectA(&f);
+        f = lf; f.lfWeight = FW_SEMIBOLD; g_font_nav_bold = CreateFontIndirectA(&f);
         SendMessageA(ctl(IDC_HEAD), WM_SETFONT, (WPARAM)g_font_head, TRUE);
-        set_text(IDC_BR_INTRO, "The bridge connects the AES67 streams to ordinary Windows audio devices, so applications that cannot use ASIO (Teams, Zoom, browsers, media players) "
+        SendMessageA(ctl(IDC_APPTITLE), WM_SETFONT, (WPARAM)g_font_title, TRUE);
+        for (int i = 0; i < 20; i++) { HWND h = ctl(IDC_SEC_BASE + i); if (h) SendMessageA(h, WM_SETFONT, (WPARAM)g_font_section, TRUE); }
+        set_text(IDC_VERSION, std::string("v") + AES67VSC_VERSION);
+        set_text(IDC_BR_INTRO, "Connects the AES67 streams to ordinary Windows audio devices, so applications that cannot use ASIO (Teams, Zoom, browsers, media players) "
                                "can use them. Only devices that exist in Windows can be chosen; a virtual cable such as the free VB-CABLE provides the \"microphone\" and \"speaker\" those applications see.");
         set_text(IDC_BR_HOWTO, "Teams preset configures the common case: incoming stream -> CABLE Input (applications record it as microphone \"CABLE Output\"); what the application plays -> transmitted.\r\n\r\n"
                                "With only the free VB-CABLE the outgoing side is the loopback of your speakers, so everything the PC plays is sent. For an application-only outgoing stream add a second cable "
                                "(VB-CABLE A+B or Voicemeeter Banana); the preset detects it.");
         g_ifaces = list_interfaces();
         load_to_ui();
+        apply_theme();
         { std::string err; g_sap.start(pick_interface(g_cfg.interface_ip).ipv4, true, err); }
         tray_add(dlg);
         refresh_status();
@@ -654,16 +803,29 @@ static INT_PTR CALLBACK MainProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
         if (!g_pending_sdp.empty()) { import_sdp_text(g_pending_sdp, "Loaded SDP from the command line"); g_pending_sdp.clear(); }
         return TRUE;
     }
-    case WM_NOTIFY: {
-        NMHDR* n = (NMHDR*)lp;
-        if (n->idFrom == IDC_TABS && n->code == TCN_SELCHANGE) select_page(TabCtrl_GetCurSel(n->hwndFrom));
+    case WM_ERASEBKGND: {
+        RECT r; GetClientRect(dlg, &r);
+        RECT s = r; s.right = g_sidebar_px; FillRect((HDC)wp, &s, g_br_side);
+        RECT c = r; c.left = g_sidebar_px; FillRect((HDC)wp, &c, g_br_panel);
         return TRUE;
     }
+    case WM_DRAWITEM: draw_item((const DRAWITEMSTRUCT*)lp); return TRUE;
+    case WM_CTLCOLORDLG: case WM_CTLCOLORSTATIC: case WM_CTLCOLOREDIT: case WM_CTLCOLORLISTBOX: case WM_CTLCOLORBTN: {
+        HWND h = (HWND)lp;
+        // Footer and buttons sit on the content (panel) area, the rest of the main window is sidebar.
+        int id = GetDlgCtrlID(h);
+        bool content = id == IDC_FOOT || id == IDC_APPLY || id == IDCANCEL || id == IDC_EXIT;
+        INT_PTR r = ctl_color(content ? g_pages[0] : dlg, msg, (HDC)wp, h);
+        return r;
+    }
+    case WM_SETTINGCHANGE:
+        if (lp && lstrcmpiA((const char*)lp, "ImmersiveColorSet") == 0 && g_cfg.theme == "auto") apply_theme();
+        return TRUE;
     case WM_TIMER: {
         static int n = 0;
         if (g_bridge.restart_needed()) { g_cfg.load(); bridge_start(false); }
         refresh_status();
-        if (++n % 4 == 0 && IsWindowVisible(dlg) && TabCtrl_GetCurSel(ctl(IDC_TABS)) == PAGE_STREAMS) refresh_discovered();
+        if (++n % 4 == 0 && IsWindowVisible(dlg) && g_page == PAGE_STREAMS) refresh_discovered();
         return TRUE;
     }
     case WM_TRAY:
@@ -693,7 +855,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE, LPSTR cmdline, int) {
     g_inst = inst;
     net_init();
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-    INITCOMMONCONTROLSEX icc{sizeof icc, ICC_STANDARD_CLASSES | ICC_WIN95_CLASSES | ICC_TAB_CLASSES};
+    INITCOMMONCONTROLSEX icc{sizeof icc, ICC_STANDARD_CLASSES | ICC_WIN95_CLASSES};
     InitCommonControlsEx(&icc);
     WM_SHOWME = RegisterWindowMessageA("AES67VSC_ShowPanel");
     HANDLE mutex = CreateMutexA(nullptr, TRUE, "Local\\AES67VSC_Panel");

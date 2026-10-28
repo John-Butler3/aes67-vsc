@@ -10,11 +10,21 @@
 #define IDI_TRAY_YELLOW   104
 #define IDI_TRAY_RED      105
 
-// main window
-#define IDC_TABS          900
+// main window: sidebar + footer
+#define IDC_APPTITLE      900
+#define IDC_APPSUB        902
 #define IDC_FOOT          901
+#define IDC_VERSION       903
+#define IDC_NAV0          910
+#define IDC_NAV1          911
+#define IDC_NAV2          912
+#define IDC_NAV3          913
 #define IDC_APPLY         1032
 #define IDC_EXIT          1033
+
+// section headers (bold) 1200-1219 and separator lines 1220-1239
+#define IDC_SEC_BASE      1200
+#define IDC_LINE_BASE     1220
 
 // status page
 #define IDC_DOT_MAIN      1100
@@ -43,6 +53,7 @@
 #define IDC_PTPMODE       1005
 #define IDC_PTPDOMAIN     1006
 #define IDC_CHANNELS      1007
+#define IDC_THEME         1008
 #define IDC_AUTORUN       1045
 #define IDC_OPENCFG       1031
 #define IDC_ABOUT         1050

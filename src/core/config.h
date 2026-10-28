@@ -19,11 +19,12 @@ struct Config {
     double link_offset_ms = 4.0;         // receive playout delay
     int log_level = 1;                   // 0 debug .. 3 error
     int spin_us = 150;                   // busy-wait window before each timer deadline
+    std::string theme = "auto";          // panel appearance: auto (follow Windows) / light / dark
 
     // [ptp]
     PtpMode ptp_mode = PtpMode::Auto;
     int ptp_domain = 0;
-    int ptp_priority1 = 128;             // when acting as master
+    int ptp_priority1 = 200;             // when acting as master; real devices (128) win
     int ptp_sync_log_interval = -3;      // master: 8 syncs/s (AES67 media profile)
     int ptp_announce_log_interval = 1;   // master: every 2 s
 

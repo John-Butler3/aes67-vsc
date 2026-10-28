@@ -78,7 +78,8 @@ public:
     bool set_send_buffer(int bytes);
     bool set_recv_timeout_ms(int ms);
     bool set_nonblocking(bool on);
-    bool set_timestamping(bool on);         // kernel receive timestamps where available (Linux)
+    bool set_timestamping(bool on);         // kernel/stack receive timestamps where available (Linux, Windows 10 2004+)
+    bool has_timestamping() const { return want_timestamps_; }
 
     // Returns bytes received, 0 on timeout, -1 on error. rx_mono_ns gets the receive timestamp.
     int recv(void* buf, int len, std::string* from_ip, uint16_t* from_port, int64_t* rx_mono_ns);

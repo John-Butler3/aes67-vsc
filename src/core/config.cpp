@@ -45,6 +45,7 @@ std::string Config::to_ini() const {
     o << "link_offset_ms=" << link_offset_ms << "\n";
     o << "log_level=" << log_level << "\n";
     o << "spin_us=" << spin_us << "\n";
+    o << "theme=" << theme << "\n";
     o << "\n[ptp]\n";
     o << "mode=" << ptp_mode_name(ptp_mode) << "\n";
     o << "domain=" << ptp_domain << "\n";
@@ -105,6 +106,7 @@ bool Config::from_ini(const std::string& text, std::string& err) {
             else if (k == "link_offset_ms") c.link_offset_ms = F();
             else if (k == "log_level") c.log_level = I();
             else if (k == "spin_us") c.spin_us = I();
+            else if (k == "theme") c.theme = (v == "light" || v == "dark") ? v : "auto";
         } else if (sect == "ptp") {
             if (k == "mode") c.ptp_mode = ptp_mode_from_name(v);
             else if (k == "domain") c.ptp_domain = I();

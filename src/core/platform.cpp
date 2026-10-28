@@ -319,11 +319,43 @@ bool UdpSocket::set_nonblocking(bool on) {
     return fcntl(s_, F_SETFL, on ? (fl | O_NONBLOCK) : (fl & ~O_NONBLOCK)) == 0;
 #endif
 }
+#ifdef _WIN32
+// Windows 10 2004+ can stamp received datagrams in the network stack (far below user mode),
+// which removes most of the scheduling noise from PTP measurements. Definitions are spelled
+// out here so that older SDK headers (MinGW) build as well.
+#ifndef SIO_TIMESTAMPING
+#  define SIO_TIMESTAMPING 0x980000EB
+#endif
+#ifndef SO_TIMESTAMP
+#  define SO_TIMESTAMP 0x300A
+#endif
+struct TimestampingConfigW { ULONG Flags; USHORT TxTimestampsBuffered; };
+typedef int (WSAAPI *WSARecvMsg_t)(SOCKET, LPWSAMSG, LPDWORD, LPWSAOVERLAPPED, LPWSAOVERLAPPED_COMPLETION_ROUTINE);
+static WSARecvMsg_t get_wsarecvmsg(SOCKET s) {
+    static WSARecvMsg_t fn = nullptr;
+    if (fn) return fn;
+    GUID guid = {0xf689d7c8, 0x6f1f, 0x436b, {0x8a, 0x53, 0xe5, 0x4f, 0xe3, 0x51, 0xc3, 0x22}};
+    DWORD bytes = 0; WSARecvMsg_t f = nullptr;
+    if (WSAIoctl(s, SIO_GET_EXTENSION_FUNCTION_POINTER, &guid, sizeof guid, &f, sizeof f, &bytes, nullptr, nullptr) == 0) fn = f;
+    return fn;
+}
+#endif
+
 bool UdpSocket::set_timestamping(bool on) {
-    want_timestamps_ = on;
+    want_timestamps_ = false;
 #if defined(__linux__)
     int v = on ? 1 : 0;
-    return setsockopt(s_, SOL_SOCKET, SO_TIMESTAMPNS, &v, sizeof v) == 0;
+    bool ok = setsockopt(s_, SOL_SOCKET, SO_TIMESTAMPNS, &v, sizeof v) == 0;
+    want_timestamps_ = on && ok;
+    return ok;
+#elif defined(_WIN32)
+    if (!on) return true;
+    TimestampingConfigW cfg{}; cfg.Flags = 0x1 /*TIMESTAMPING_FLAG_RX*/; cfg.TxTimestampsBuffered = 0;
+    DWORD bytes = 0;
+    if (WSAIoctl(s_, SIO_TIMESTAMPING, &cfg, sizeof cfg, nullptr, 0, &bytes, nullptr, nullptr) != 0) return false;
+    if (!get_wsarecvmsg(s_)) return false;
+    want_timestamps_ = true;
+    return true;
 #else
     return false;
 #endif
@@ -355,6 +387,37 @@ int UdpSocket::recv(void* buf, int len, std::string* from_ip, uint16_t* from_por
             }
         }
         fl = msg.msg_namelen;
+    } else
+#endif
+#if defined(_WIN32)
+    if (want_timestamps_) {
+        WSARecvMsg_t rm = get_wsarecvmsg(s_);
+        WSABUF wb; wb.buf = (char*)buf; wb.len = (ULONG)len;
+        char ctrl[128];
+        WSAMSG msg{}; msg.name = (sockaddr*)&from; msg.namelen = fl; msg.lpBuffers = &wb; msg.dwBufferCount = 1;
+        msg.Control.buf = ctrl; msg.Control.len = sizeof ctrl;
+        DWORD got = 0;
+        int r = rm ? rm(s_, &msg, &got, nullptr, nullptr) : SOCKET_ERROR;
+        n = r == 0 ? (int)got : -1;
+        int64_t now = mono_ns();
+        if (n > 0 && rx_mono_ns) {
+            *rx_mono_ns = now;
+            // Walk the control messages by hand (same layout as WSACMSGHDR; avoids SDK header differences).
+            struct CmsgW { SIZE_T len; INT level; INT type; };
+            auto align = [](size_t l) { return (l + sizeof(SIZE_T) - 1) & ~(sizeof(SIZE_T) - 1); };
+            const char* cb = msg.Control.buf; size_t cl = msg.Control.len, off = 0;
+            while (off + sizeof(CmsgW) <= cl) {
+                const CmsgW* c = (const CmsgW*)(cb + off);
+                if (c->len < sizeof(CmsgW) || off + c->len > cl) break;
+                if (c->level == SOL_SOCKET && c->type == SO_TIMESTAMP && c->len >= align(sizeof(CmsgW)) + sizeof(UINT64)) {
+                    UINT64 qpc; memcpy(&qpc, cb + off + align(sizeof(CmsgW)), sizeof qpc);   // QueryPerformanceCounter units
+                    const int64_t f = qpc_freq();
+                    *rx_mono_ns = ((int64_t)qpc / f) * 1000000000LL + (((int64_t)qpc % f) * 1000000000LL) / f;
+                }
+                off += align(c->len);
+            }
+        }
+        fl = msg.namelen;
     } else
 #endif
     {

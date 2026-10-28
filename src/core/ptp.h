@@ -17,7 +17,7 @@ struct PtpParams {
     std::string iface_ip;
     int domain = 0;
     PtpMode mode = PtpMode::Auto;
-    int priority1 = 128;
+    int priority1 = 200;             // deliberately worse than real devices (128) so they stay master
     int priority2 = 128;
     int sync_log_interval = -3;      // master
     int announce_log_interval = 1;   // master
@@ -51,6 +51,8 @@ public:
     std::string own_identity() const;
     std::string refclk_string() const;            // SDP a=ts-refclk value
     uint32_t sync_count() const { return sync_count_.load(); }
+    uint32_t outlier_count() const { return outlier_count_.load(); }
+    bool stack_timestamps() const { return ev_.has_timestamping(); }
 
     // Direct servo access for tests.
     void servo_reset();
@@ -107,7 +109,11 @@ private:
     int outliers_in_row_ = 0;
     int64_t first_good_mono_ = 0;  // when the error first stayed small (for lock)
     int64_t last_good_mono_ = 0;
-    std::atomic<uint32_t> sync_count_{0};
+    std::atomic<uint32_t> sync_count_{0}, outlier_count_{0};
+    // min-delay prefilter: of the last few measurements, the one with the largest error
+    // (least delayed on its way to us) is the trustworthy one
+    std::array<int64_t, 8> ewin_{}; int ewin_n_ = 0, ewin_i_ = 0, since_best_ = 0;
+    std::map<std::array<uint8_t, 10>, int64_t> sync_sources_;   // port id -> last Sync seen (for masters that never Announce)
     bool is_master_ = false;
     bool have_master_ = false;
     ForeignMaster cur_master_;

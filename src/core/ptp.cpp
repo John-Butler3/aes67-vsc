@@ -76,6 +76,7 @@ bool PtpClock::start(const PtpParams& p, std::string& err) {
     if (!open(ev_, p.event_port) || !open(gen_, (uint16_t)(p.event_port + 1))) { ev_.close(); gen_.close(); return false; }
     running_ = true;
     set_state(PtpState::Listening);
+    LOG_I("PTP: domain %d, mode %s, %s receive timestamps", p.domain, ptp_mode_name(p.mode), ev_.has_timestamping() ? "network-stack" : "user-mode");
     thread_ = std::thread([this] { thread_main(); });
     return true;
 }
@@ -105,7 +106,7 @@ void PtpClock::servo_reset() {
     servo_.freq = 0.0;
     servo_.valid = true;
     delay_win_n_ = delay_win_i_ = 0;
-    last_t1_ = last_t2_ = 0; jitter_ema_ = 0; outliers_in_row_ = 0; first_good_mono_ = last_good_mono_ = 0;
+    last_t1_ = last_t2_ = 0; jitter_ema_ = 0; outliers_in_row_ = 0; first_good_mono_ = last_good_mono_ = 0; ewin_n_ = ewin_i_ = 0; since_best_ = 0;
     last_servo_mono_ = 0;
 }
 int64_t PtpClock::mono_to_ptp(int64_t mono) const {
@@ -133,6 +134,7 @@ void PtpClock::servo_update(int64_t master_ns, int64_t local_mono) {
         servo_.valid = true;
         last_servo_mono_ = local_mono;
         jitter_ema_ = 0; outliers_in_row_ = 0; first_good_mono_ = last_good_mono_ = 0;
+        ewin_n_ = ewin_i_ = 0; since_best_ = 0;
         last_offset_ns_ = -e;
         return;
     }
@@ -140,10 +142,19 @@ void PtpClock::servo_update(int64_t master_ns, int64_t local_mono) {
     // Once we have a jitter estimate, ignore measurements far outside it (but never more than 8 in a row).
     double ae = (double)std::llabs(e);
     if (jitter_ema_ > 0 && ae > std::max(4.0 * jitter_ema_, 200000.0) && outliers_in_row_ < 8) {
-        outliers_in_row_++;
+        outliers_in_row_++; outlier_count_++;
         return;
     }
     outliers_in_row_ = 0;
+    // Min-delay prefilter. Delay on the path (queuing, scheduling) always makes a measurement look
+    // "earlier" (smaller e). The largest e in the recent window is therefore the cleanest sample:
+    // use a new sample only if it is at least as good as the window, otherwise wait (at most 8 samples).
+    ewin_[ewin_i_] = e; ewin_i_ = (ewin_i_ + 1) % 8; if (ewin_n_ < 8) ewin_n_++;
+    int64_t best = ewin_[0]; for (int i = 1; i < ewin_n_; i++) best = std::max(best, ewin_[i]);
+    if (ewin_n_ >= 4 && e < best - 20000 && since_best_ < 8) { since_best_++; return; }
+    if (e < best) e = best;     // after 8 skips, apply the best of the window instead
+    since_best_ = 0;
+    ae = (double)std::llabs(e);
     jitter_ema_ = jitter_ema_ > 0 ? jitter_ema_ * 0.9 + ae * 0.1 : ae;
     jitter_ns_ = (int64_t)jitter_ema_;
     last_offset_ns_ = -e;
@@ -222,6 +233,8 @@ void PtpClock::handle_event(const uint8_t* b, int n, int64_t rx_mono, const std:
         int64_t t1 = 0; bool one_step = false;
         {
             std::lock_guard<std::mutex> g(mu_);
+            std::array<uint8_t, 10> pid; memcpy(pid.data(), b + 20, 10);
+            sync_sources_[pid] = rx_mono;
             if (!have_master_ || is_master_ || memcmp(b + 20, cur_master_.port_id.data(), 10) != 0) return;
             uint16_t seq = rd16(b + 30);
             bool two_step = (b[6] & 0x02) != 0;
@@ -315,11 +328,26 @@ bool PtpClock::foreign_better_than_us(const ForeignMaster& f) const {
 
 void PtpClock::select_master(int64_t now_mono) {
     std::lock_guard<std::mutex> g(mu_);
-    // Expire foreign masters (3 announce intervals, min 3 s).
+    // Expire foreign masters (3 announce intervals, min 3 s). Sync traffic also keeps a master alive.
+    for (auto& kv : foreign_) { auto s = sync_sources_.find(kv.first); if (s != sync_sources_.end()) kv.second.last_seen_mono = std::max(kv.second.last_seen_mono, s->second); }
     for (auto it = foreign_.begin(); it != foreign_.end();) {
         double ivl = std::ldexp(1.0, it->second.log_announce);
         int64_t timeout = (int64_t)(std::max(3.0 * ivl, 3.0) * 1e9);
         if (now_mono - it->second.last_seen_mono > timeout) it = foreign_.erase(it); else ++it;
+    }
+    // A master that sends Sync but never Announce (seen on some devices / misconfigured domains):
+    // after 3 s of Syncs with no Announce from anyone, treat it as a master with a default dataset
+    // that beats our own free-running clock.
+    for (auto it = sync_sources_.begin(); it != sync_sources_.end();) {
+        if (now_mono - it->second > 5000000000LL) { it = sync_sources_.erase(it); continue; }
+        if (foreign_.empty() && now_mono - start_mono_ > 3000000000LL && !is_master_) {
+            ForeignMaster f; f.port_id = it->first; memcpy(f.gm_id.data(), it->first.data(), 8);
+            f.priority1 = 128; f.clock_class = 248; f.accuracy = 0xFE; f.variance = 0xFFFF; f.priority2 = 128; f.log_announce = 1;
+            f.last_seen_mono = it->second;
+            foreign_[f.port_id] = f;
+            LOG_I("PTP: %s sends Sync without Announce; following it anyway", ptp_identity_string(f.port_id.data()).c_str());
+        }
+        ++it;
     }
     const ForeignMaster* best = nullptr;
     for (auto& kv : foreign_) {
@@ -378,7 +406,7 @@ void PtpClock::become_slave(const ForeignMaster& f) {
         std::lock_guard<std::mutex> g(mu_);
         is_master_ = false; have_master_ = true; cur_master_ = f;
         pending_sync_.clear();
-        delay_win_n_ = delay_win_i_ = 0; last_t1_ = last_t2_ = 0; jitter_ema_ = 0; outliers_in_row_ = 0; first_good_mono_ = last_good_mono_ = 0;
+        delay_win_n_ = delay_win_i_ = 0; last_t1_ = last_t2_ = 0; jitter_ema_ = 0; outliers_in_row_ = 0; first_good_mono_ = last_good_mono_ = 0; ewin_n_ = ewin_i_ = 0; since_best_ = 0;
         servo_.valid = false;  // force a step on the first sync
         path_delay_ns_ = 0;
         last_dreq_mono_ = 0;
