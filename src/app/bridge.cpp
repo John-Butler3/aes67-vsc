@@ -15,9 +15,9 @@ static void usage() {
     printf("aes67vsc-bridge: route the AES67 streams to/from Windows audio devices\n\n"
            "  aes67vsc-bridge --list\n"
            "  aes67vsc-bridge [--play <device|default|none>] [--capture <device|default|none>] [--loopback <device|default>]\n\n"
-           "  --play      playback device that receives the AES67 input stream (name substring)\n"
-           "  --capture   recording device whose audio is sent as the AES67 output stream\n"
-           "  --loopback  instead of --capture: send everything played on this playback device\n\n"
+           "  --play      playback device on which the INCOMING stream (received from the network) is played\n"
+           "  --capture   recording device whose audio becomes the OUTGOING stream (transmitted to the network)\n"
+           "  --loopback  instead of --capture: transmit everything played on this playback device\n\n"
            "Without arguments the devices saved by the tray application are used.\n"
            "With VB-CABLE installed:  aes67vsc-bridge --play \"CABLE Input\" --loopback default\n"
            "then normal apps (Teams, browsers) record the AES67 audio from \"CABLE Output\".\n");
@@ -47,7 +47,7 @@ int main(int argc, char** argv) {
     if (!br.start(cfg, play, cap, loopback, err)) { fprintf(stderr, "%s\n", err.c_str()); return 2; }
     SetConsoleCtrlHandler(on_ctrl, TRUE);
     BridgeStats st = br.stats();
-    printf("bridge running. AES67 in -> %s ; AES67 out <- %s%s. Ctrl-C to stop.\n", st.play_name.empty() ? "(none)" : st.play_name.c_str(),
+    printf("bridge running. incoming stream plays on: %s ; outgoing stream taken from: %s%s. Ctrl-C to stop.\n", st.play_name.empty() ? "(none)" : st.play_name.c_str(),
            st.source_name.empty() ? "(none)" : st.source_name.c_str(), loopback ? " (loopback)" : "");
     int n = 0;
     while (!g_stop) {

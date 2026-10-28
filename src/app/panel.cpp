@@ -77,7 +77,7 @@ static void set_autorun(bool on) {
 // Entry 0 = default, 1 = none, then devices. Source list adds loopback entries for playback devices.
 static void fill_bridge_combos(HWND dlg) {
     g_devs = bridge_list_devices();
-    std::vector<std::string> play{"Default playback device", "(none)"}, src{"Default recording device", "(none)"};
+    std::vector<std::string> play{"Default playback device", "(do not play)"}, src{"Default recording device (microphone)", "(send silence)"};
     int psel = lower(g_cfg.bridge_play) == "none" ? 1 : 0, ssel = lower(g_cfg.bridge_source) == "none" ? 1 : 0;
     for (auto& d : g_devs) if (d.render) { play.push_back(d.name); if (lower(g_cfg.bridge_play) != "default" && lower(g_cfg.bridge_play) != "none" && lower(d.name).find(lower(g_cfg.bridge_play)) != std::string::npos && psel < 2) psel = (int)play.size() - 1; }
     for (auto& d : g_devs) if (!d.render) { src.push_back(d.name); if (!g_cfg.bridge_loopback && lower(g_cfg.bridge_source) != "default" && lower(g_cfg.bridge_source) != "none" && lower(d.name).find(lower(g_cfg.bridge_source)) != std::string::npos && ssel < 2) ssel = (int)src.size() - 1; }
@@ -284,8 +284,8 @@ static void teams_preset(HWND dlg) {
     bridge_start(dlg);
     std::string spk = cable_a.empty() ? "your normal speakers / headset (the default playback device)" : cable_a;
     std::string msg = "Bridge started for Teams.\n\nIn Teams > Settings > Devices choose:\n"
-                      "   Microphone:  CABLE Output (VB-Audio Virtual Cable)\n      -> carries the AES67 input stream\n"
-                      "   Speaker:     " + spk + "\n      -> is sent as the AES67 output stream\n\n"
+                      "   Microphone:  CABLE Output (VB-Audio Virtual Cable)\n      = the stream received from the AES67 network, so the far end hears it\n"
+                      "   Speaker:     " + spk + "\n      = what Teams plays; it is transmitted to the AES67 network\n\n"
                       "Tips: turn Teams noise suppression off (or Low) and enable High fidelity music mode for programme audio.\n"
                       "Set both VB-CABLE endpoints to 2 channels / 48000 Hz in Windows Sound settings.\n"
                       "The same settings work for Zoom, Meet and other apps.";
@@ -360,7 +360,7 @@ static void refresh_status(HWND dlg) {
     else text += "ASIO driver: idle (no ASIO application has the device open)\n";
     // Bridge line
     if (br_on) {
-        text += "Bridge:     running   AES67 in -> " + (bs.play_name.empty() ? std::string("(nothing)") : bs.play_name) + "   |   AES67 out <- " + (bs.source_name.empty() ? std::string("(nothing)") : bs.source_name) + (bs.loopback ? " (loopback)" : "") + "\n";
+        text += "Bridge:     running   incoming stream plays on: " + (bs.play_name.empty() ? std::string("(nothing)") : bs.play_name) + "   |   outgoing stream taken from: " + (bs.source_name.empty() ? std::string("(silence)") : bs.source_name) + (bs.loopback ? " (loopback)" : "") + "\n";
         if (!bs.error.empty()) text += "            ERROR: " + bs.error + "\n";
     } else text += std::string("Bridge:     stopped") + (g_bridge_error.empty() ? "" : "   last error: " + g_bridge_error) + "\n";
     if (drv_on && br_on) text += "WARNING: driver and bridge are both running and both transmit to the same stream.\n";

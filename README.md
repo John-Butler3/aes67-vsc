@@ -53,15 +53,16 @@ The window has five parts:
 * **Device**: the network interface on the AES67 network, sample rate, ASIO buffer size, PTP
   mode/domain and the *link offset* (receive playout delay, default 4 ms; 1-2 ms works on a
   quiet switched LAN).
-* **Receive**: *Load SDP file...* with the SDP exported by the sending device (Dante
+* **Receive from network** (driver inputs 1-2): *Load SDP file...* with the SDP exported by the sending device (Dante
   Controller > AES67 flows, RAVENNA/ANEMAN, another PC with this driver, ...), or drop an
   `.sdp` file onto the window. Streams announced via SAP appear in the *Discovered* list. For
   multichannel streams choose which stream channel feeds input 1.
-* **Transmit**: stream name, multicast address and port, then **Save SDP file...** (or copy
+* **Transmit to network** (driver outputs 1-2): stream name, multicast address and port, then **Save SDP file...** (or copy
   to the clipboard) and give that file to the receiver. The stream is also announced via SAP.
 * **Windows audio bridge**: makes the streams available to ordinary applications (Teams,
-  browsers, players) through Windows audio devices. Pick where the AES67 input is played and
-  which device (or playback loopback) is sent as the AES67 output, press *Start bridge*, or
+  browsers, players) through Windows audio devices. Pick on which device the incoming stream (received from the
+  network) is played and which device (or playback loopback) becomes the outgoing stream
+  (transmitted to the network), press *Start bridge*, or
   press **Teams preset** which configures everything for a Teams/Zoom call (see below).
   *Start bridge with this app* restarts it automatically at logon.
 * **Status**: what is running right now: the ASIO driver (inside an audio application), the
@@ -112,8 +113,8 @@ Settings > Devices choose:
 
 | Teams setting | Device | Carries |
 |---|---|---|
-| Microphone | CABLE Output (VB-Audio Virtual Cable) | the AES67 **input** stream |
-| Speaker | your normal speakers / headset | sent as the AES67 **output** stream |
+| Microphone | CABLE Output (VB-Audio Virtual Cable) | the stream **received from** the AES67 network (so the far end hears it) |
+| Speaker | your normal speakers / headset | what Teams plays, **transmitted to** the AES67 network |
 
 With the default playback device as the source, everything the PC plays goes into the
 AES67 output stream, not only Teams. If you add the donationware **VB-CABLE A**, the preset

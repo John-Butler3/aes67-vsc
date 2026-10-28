@@ -25,8 +25,8 @@ echo.
 echo  AES67 bridge for Teams
 echo  ----------------------
 echo  In Teams ^> Settings ^> Devices set:
-echo    Microphone : CABLE Output (VB-Audio Virtual Cable)   ^<- carries the AES67 input stream
-echo    Speaker    : %TEAMS_SPK%   ^<- is sent as the AES67 output stream
+echo    Microphone : CABLE Output (VB-Audio Virtual Cable)   = stream received from the AES67 network
+echo    Speaker    : %TEAMS_SPK%   = what Teams plays, transmitted to the AES67 network
 echo  Tip: in Teams turn Noise suppression off ^(or on "Low"^) and enable High fidelity music mode
 echo       if you are sending programme audio rather than speech.
 echo  Keep this window open while you use Teams. Press Ctrl-C to stop.

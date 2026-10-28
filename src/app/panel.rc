@@ -31,7 +31,7 @@ BEGIN
     LTEXT           "Link offset / playout delay (ms):", -1, 262, 40, 110, 10
     EDITTEXT        IDC_LINKOFF, 372, 38, 36, 12
 
-    GROUPBOX        "Receive (inputs 1-2)", -1, 7, 66, 226, 130
+    GROUPBOX        "Receive from network (driver inputs 1-2)", -1, 7, 66, 226, 130
     CONTROL         "Enabled", IDC_RX_ENABLE, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 79, 50, 10
     PUSHBUTTON      "Load SDP file...", IDC_RX_LOAD, 150, 76, 76, 14
     LTEXT           "", IDC_RX_INFO, 15, 93, 211, 60, SS_LEFT | SS_NOPREFIX
@@ -42,7 +42,7 @@ BEGIN
     LTEXT           "First stream channel for input 1:", -1, 15, 184, 110, 10
     EDITTEXT        IDC_RX_CHOFF, 128, 182, 24, 12, ES_NUMBER
 
-    GROUPBOX        "Transmit (outputs 1-2)", -1, 240, 66, 223, 130
+    GROUPBOX        "Transmit to network (driver outputs 1-2)", -1, 240, 66, 223, 130
     CONTROL         "Enabled", IDC_TX_ENABLE, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 248, 79, 50, 10
     CONTROL         "Announce via SAP", IDC_TX_SAP, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 320, 79, 80, 10
     LTEXT           "Stream name:", -1, 248, 96, 50, 10
@@ -59,12 +59,12 @@ BEGIN
     LTEXT           "Receivers (another PC with this driver, Dante/AES67 devices, Ravenna...) subscribe with this SDP.", -1, 248, 170, 210, 20
 
     GROUPBOX        "Windows audio bridge (Teams, browsers, any app)", -1, 7, 200, 456, 68
-    LTEXT           "Play AES67 input to:", -1, 15, 215, 78, 10
-    COMBOBOX        IDC_BR_PLAY, 95, 213, 200, 160, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Incoming stream (from network) plays on:", -1, 15, 215, 130, 10
+    COMBOBOX        IDC_BR_PLAY, 148, 213, 150, 160, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     PUSHBUTTON      "Start bridge", IDC_BR_START, 305, 212, 70, 14
     PUSHBUTTON      "Teams preset", IDC_BR_TEAMS, 380, 212, 76, 14
-    LTEXT           "Send to AES67 from:", -1, 15, 233, 78, 10
-    COMBOBOX        IDC_BR_SOURCE, 95, 231, 200, 160, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Outgoing stream (to network) taken from:", -1, 15, 233, 130, 10
+    COMBOBOX        IDC_BR_SOURCE, 148, 231, 150, 160, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     CONTROL         "Start bridge with this app", IDC_BR_AUTO, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 305, 232, 150, 10
     CONTROL         "Start this app with Windows (hidden in the tray)", IDC_AUTORUN, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 250, 200, 10
     LTEXT           "", IDC_BR_STATUS, 220, 250, 236, 12, SS_LEFT | SS_NOPREFIX
@@ -79,8 +79,8 @@ BEGIN
 END
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 0,3,0,0
- PRODUCTVERSION 0,3,0,0
+ FILEVERSION 0,3,1,0
+ PRODUCTVERSION 0,3,1,0
  FILEOS VOS_NT_WINDOWS32
  FILETYPE VFT_APP
 BEGIN
