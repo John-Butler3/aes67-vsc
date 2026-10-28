@@ -21,13 +21,15 @@ which pair of stream channels feeds the two inputs.
 
 1. Download the latest `aes67-vsc-<version>-win64.zip` from the
    [Releases page](https://github.com/John-Butler3/aes67-vsc/releases) (or build it, see
-   below) and unpack it to a permanent folder, e.g. `C:\Program Files\AES67 VSC`.
-2. Right-click `install.bat` and choose **Run as administrator**. It registers
+   below) and extract the **whole zip** to a permanent folder on your **local drive**,
+   e.g. `C:\AES67VSC` or `C:\Program Files\AES67 VSC`. Not a network share, and not by
+   double-clicking inside the zip: the driver is loaded from this folder later.
+2. Double-click `install.bat` (it asks for administrator rights). It registers
    `aes67asio.dll` and adds a Windows Firewall rule for the UDP ports (319/320 PTP,
    5004 audio, 9875 SAP).
 3. In your audio application select the ASIO device **AES67 Virtual Sound Card**.
 
-`uninstall.bat` (as administrator) removes the registration again. Settings live in
+`uninstall.bat` removes the registration again. Settings live in
 `%APPDATA%\AES67VSC\config.ini`; a log is written to `%APPDATA%\AES67VSC\driver.log`.
 
 Only 64-bit hosts are supported by the prebuilt package.
