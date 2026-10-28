@@ -41,6 +41,10 @@ if(WIN32)
 
   add_executable(aes67vsc-panel WIN32 src/app/panel.cpp src/app/panel.rc)
   target_link_libraries(aes67vsc-panel aes67core comdlg32 comctl32 gdi32 user32)
+  if(MSVC)
+    # The manifest is embedded from panel.rc; stop the linker generating a second one.
+    target_link_options(aes67vsc-panel PRIVATE /MANIFEST:NO)
+  endif()
 
   install(TARGETS aes67asio aes67vsc aes67vsc-panel RUNTIME DESTINATION . LIBRARY DESTINATION .)
   install(FILES scripts/install.bat scripts/uninstall.bat README.md LICENSE sdp/example-receive.sdp DESTINATION .)
