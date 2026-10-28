@@ -251,10 +251,12 @@ static INT_PTR CALLBACK DlgProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
         if (!g_pending_sdp.empty()) { import_sdp_text(dlg, g_pending_sdp, "Loaded SDP from the command line"); g_pending_sdp.clear(); }
         return TRUE;
     }
-    case WM_TIMER:
+    case WM_TIMER: {
+        static int n = 0;
         refresh_status(dlg);
-        static int n = 0; if (++n % 4 == 0) refresh_discovered(dlg);
+        if (++n % 4 == 0) refresh_discovered(dlg);
         return TRUE;
+    }
     case WM_DROPFILES: {
         HDROP hd = (HDROP)wp; char file[MAX_PATH] = {0};
         if (DragQueryFileA(hd, 0, file, MAX_PATH)) { std::string text; if (read_file(file, text)) import_sdp_text(dlg, text, std::string("Loaded ") + file); }
