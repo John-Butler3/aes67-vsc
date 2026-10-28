@@ -122,6 +122,7 @@ private:
     std::atomic<uint32_t> periods_{0}, late_periods_{0};
     std::atomic<uint64_t> sample_pos_{0};
     int64_t cfg_mtime_ = 0;
+    int64_t last_rejoin_mono_ = 0;
     const char* status_name_ = nullptr;
 };
 

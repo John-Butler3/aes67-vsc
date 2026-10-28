@@ -227,6 +227,7 @@ void Engine::engine_thread() {
     int64_t base_ptp = 0; int64_t k = 0, period_index = 0;
     uint32_t base_samples = 0, tx_ts = 0, rx_read = 0; bool rx_read_valid = false; uint32_t seen_epoch = 0;
     int tx_acc = 0, frames_until_period = 0;
+    int64_t slip_acc = 0; int slip_n = 0;
     auto anchor = [&]() {
         base_ptp = ptp_.now_ns() + 2 * tick_ns;
         base_ptp -= base_ptp % tick_ns;        // align to a whole tick of PTP time
@@ -293,12 +294,21 @@ void Engine::engine_thread() {
             int32_t off = off_est_pub_.load();
             uint32_t ideal = nominal + (uint32_t)off - (uint32_t)link_offset_frames_.load() - (uint32_t)N;
             uint32_t ep = off_epoch_.load();
-            if (!rx_read_valid || ep != seen_epoch) { rx_read = ideal; rx_read_valid = true; seen_epoch = ep; }
+            if (!rx_read_valid || ep != seen_epoch) { rx_read = ideal; rx_read_valid = true; seen_epoch = ep; slip_acc = 0; slip_n = 0; }
             else {
                 int32_t diff = ts_diff(ideal, rx_read);
                 int32_t big = std::max(link_offset_frames_.load() / 2, tx_fpp_ * 2);
-                if (std::abs(diff) > big) { rx_read = ideal; rx_resyncs_++; }
-                else if (std::abs(diff) >= 2) { rx_read += (uint32_t)diff; rx_slips_++; }
+                if (std::abs(diff) > big) { rx_read = ideal; rx_resyncs_++; slip_acc = 0; slip_n = 0; }
+                else {
+                    // Small differences are clock-phase noise; average them over ~1 s and only then slip,
+                    // so a wobbling PTP phase does not click the audio.
+                    slip_acc += diff; slip_n++;
+                    if (slip_n * N >= rate_) {
+                        int32_t mean = (int32_t)(slip_acc / slip_n);
+                        if (std::abs(mean) >= 4) { rx_read += (uint32_t)mean; rx_slips_++; }
+                        slip_acc = 0; slip_n = 0;
+                    }
+                }
             }
             bool rx_on = rx_running_.load();
             uint32_t lost = 0;
@@ -347,6 +357,21 @@ void Engine::housekeeping_thread() {
         // SAP announcement follows the TX stream description (refclk may change with the PTP master).
         if (cfg_.tx_enabled && cfg_.sap_announce) sap_.set_announcement(tx_sdp());
         else sap_.set_announcement("");
+        // Multicast stream vanished after having been active (typical IGMP snooping timeout without a
+        // querier): leave and re-join the group so the switch forwards it again.
+        {
+            int64_t last = rx_last_mono_.load();
+            if (rx_running_ && last && mono_ns() - last > 3000000000LL && mono_ns() - last_rejoin_mono_ > 10000000000LL) {
+                last_rejoin_mono_ = mono_ns();
+                std::lock_guard<std::mutex> g(rx_mu_);
+                if (rx_running_ && rx_desc_.is_multicast()) {
+                    LOG_W("RX: no packets for 3 s; re-joining %s", rx_desc_.dest.c_str());
+                    rx_sock_.leave_multicast(rx_desc_.dest, iface_.ipv4, rx_desc_.source);
+                    if (!rx_sock_.join_multicast(rx_desc_.dest, iface_.ipv4, rx_desc_.source) && !rx_desc_.source.empty())
+                        rx_sock_.join_multicast(rx_desc_.dest, iface_.ipv4);
+                }
+            }
+        }
         // Config file watch.
         if (watch_config_) {
             int64_t m = file_mtime(Config::default_path());
@@ -401,6 +426,7 @@ StatusBlock Engine::snapshot() const {
     s.ptp_state = (uint32_t)ptp_.state();
     s.ptp_offset_ns = ptp_.offset_ns();
     s.ptp_path_delay_ns = ptp_.path_delay_ns();
+    s.ptp_jitter_ns = ptp_.jitter_ns();
     snprintf(s.ptp_master, sizeof s.ptp_master, "%s", ptp_.master_identity().c_str());
     int64_t last = rx_last_mono_.load();
     s.rx_active = (last && mono_ns() - last < 1000000000LL) ? 1 : 0;

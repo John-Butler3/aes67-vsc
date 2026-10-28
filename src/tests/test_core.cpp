@@ -178,6 +178,20 @@ static void test_servo() {
     }
     CHECK(worst_late < 60000);  // < 60 us steady-state error with 30 us noise
     if (worst_late >= 60000) fprintf(stderr, "servo steady-state error %lld ns\n", (long long)worst_late);
+    // Same again with 1 in 10 measurements delayed by 1.5 ms (late software timestamps): must be rejected.
+    PtpClock c2; c2.servo_reset();
+    int64_t worst2 = 0;
+    for (int i = 0; i < 2000; i++) {
+        int64_t mono = m0 + (int64_t)i * 125000000LL;
+        seed = seed * 1664525u + 1013904223u;
+        int64_t noise = (int64_t)(seed % 60001) - 30000;
+        if (i % 10 == 3) noise -= 1500000;   // t2 late -> master appears earlier
+        c2.servo_update(master_at(mono) + noise, mono);
+        if (i >= 1600) { int64_t probe = mono + 60000000LL; worst2 = std::max(worst2, (int64_t)std::llabs(c2.mono_to_ptp(probe) - master_at(probe))); }
+    }
+    CHECK(worst2 < 80000);
+    if (worst2 >= 80000) fprintf(stderr, "servo with outliers: error %lld ns\n", (long long)worst2);
+    CHECK(c2.jitter_ns() < 100000);
     // inverse mapping consistency
     int64_t x = mono_ns() + 123456789;
     CHECK(std::llabs(c.ptp_to_mono(c.mono_to_ptp(x)) - x) <= 1);

@@ -105,7 +105,7 @@ void PtpClock::servo_reset() {
     servo_.freq = 0.0;
     servo_.valid = true;
     delay_win_n_ = delay_win_i_ = 0;
-    good_in_row_ = 0; last_t1_ = last_t2_ = 0;
+    last_t1_ = last_t2_ = 0; jitter_ema_ = 0; outliers_in_row_ = 0; first_good_mono_ = last_good_mono_ = 0;
     last_servo_mono_ = 0;
 }
 int64_t PtpClock::mono_to_ptp(int64_t mono) const {
@@ -123,7 +123,6 @@ int64_t PtpClock::ptp_to_mono(int64_t ptp) const {
 void PtpClock::servo_update(int64_t master_ns, int64_t local_mono) {
     int64_t est = mono_to_ptp(local_mono);
     int64_t e = master_ns - est;   // positive: we are behind
-    last_offset_ns_ = -e;
     std::lock_guard<std::mutex> g(mu_);
     const int64_t kStep = 50 * 1000000LL;  // 50 ms
     if (std::llabs(e) > kStep || !servo_.valid) {
@@ -132,22 +131,35 @@ void PtpClock::servo_update(int64_t master_ns, int64_t local_mono) {
         servo_.ref_ptp = master_ns;
         servo_.freq = 0.0;
         servo_.valid = true;
-        good_in_row_ = 0;
         last_servo_mono_ = local_mono;
+        jitter_ema_ = 0; outliers_in_row_ = 0; first_good_mono_ = last_good_mono_ = 0;
+        last_offset_ns_ = -e;
         return;
     }
+    // Outlier gate: software timestamps occasionally arrive late by hundreds of microseconds.
+    // Once we have a jitter estimate, ignore measurements far outside it (but never more than 8 in a row).
+    double ae = (double)std::llabs(e);
+    if (jitter_ema_ > 0 && ae > std::max(4.0 * jitter_ema_, 200000.0) && outliers_in_row_ < 8) {
+        outliers_in_row_++;
+        return;
+    }
+    outliers_in_row_ = 0;
+    jitter_ema_ = jitter_ema_ > 0 ? jitter_ema_ * 0.9 + ae * 0.1 : ae;
+    jitter_ns_ = (int64_t)jitter_ema_;
+    last_offset_ns_ = -e;
     // Re-anchor at now (continuity), then apply PI correction.
     const double Kp = 0.1, Ki = 0.005;
     double dt = last_servo_mono_ ? (double)(local_mono - last_servo_mono_) : 1e9;
     if (dt < 1e6) dt = 1e6;
-    int64_t cur = est;
     servo_.ref_mono = local_mono;
-    servo_.ref_ptp = cur + (int64_t)std::llround(Kp * (double)e);
+    servo_.ref_ptp = est + (int64_t)std::llround(Kp * (double)e);
     servo_.freq += Ki * (double)e / dt;
     if (servo_.freq > 500e-6) servo_.freq = 500e-6;
     if (servo_.freq < -500e-6) servo_.freq = -500e-6;
     last_servo_mono_ = local_mono;
-    if (std::llabs(e) < 250000) { if (good_in_row_ < 100) good_in_row_++; } else good_in_row_ = 0;
+    // Lock bookkeeping: "good" while the smoothed error is below 250 us.
+    if (jitter_ema_ < 250000.0) { if (!first_good_mono_) first_good_mono_ = local_mono; last_good_mono_ = local_mono; }
+    else first_good_mono_ = 0;
 }
 
 // A (master time t1, local receive time t2) pair from Sync/Follow_Up.
@@ -366,7 +378,7 @@ void PtpClock::become_slave(const ForeignMaster& f) {
         std::lock_guard<std::mutex> g(mu_);
         is_master_ = false; have_master_ = true; cur_master_ = f;
         pending_sync_.clear();
-        delay_win_n_ = delay_win_i_ = 0; good_in_row_ = 0; last_t1_ = last_t2_ = 0;
+        delay_win_n_ = delay_win_i_ = 0; last_t1_ = last_t2_ = 0; jitter_ema_ = 0; outliers_in_row_ = 0; first_good_mono_ = last_good_mono_ = 0;
         servo_.valid = false;  // force a step on the first sync
         path_delay_ns_ = 0;
         last_dreq_mono_ = 0;
@@ -377,16 +389,16 @@ void PtpClock::become_slave(const ForeignMaster& f) {
 }
 
 void PtpClock::slave_tick(int64_t now) {
-    bool have; int good;
-    { std::lock_guard<std::mutex> g(mu_); have = have_master_; good = good_in_row_; }
+    bool have; int64_t first_good, last_good;
+    { std::lock_guard<std::mutex> g(mu_); have = have_master_; first_good = first_good_mono_; last_good = last_good_mono_; }
     if (!have) return;
-    // Lock state
-    if (good >= 4 && state_ != PtpState::Locked) set_state(PtpState::Locked);
-    if (good == 0 && state_ == PtpState::Locked) set_state(PtpState::Listening);
-    // Sync timeout
+    // Lock with hysteresis: locked after the error has stayed small for 1 s; unlocked only after it has
+    // been large (or syncs missing) for 3 s. Brief timestamp noise therefore does not flap the state.
+    if (state_ != PtpState::Locked && first_good && now - first_good > 1000000000LL) set_state(PtpState::Locked);
+    if (state_ == PtpState::Locked && last_good && now - last_good > 3000000000LL) set_state(PtpState::Listening);
     if (last_sync_mono_ && now - last_sync_mono_ > 5000000000LL) {
         std::lock_guard<std::mutex> g(mu_);
-        good_in_row_ = 0;
+        first_good_mono_ = 0;
     }
     // Delay request about once per second with jitter.
     if (now - last_dreq_mono_ > 900000000LL + (int64_t)(random_u32() % 200000000)) send_delay_req(now);

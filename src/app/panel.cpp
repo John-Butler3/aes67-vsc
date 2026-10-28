@@ -381,10 +381,10 @@ static std::string fmt_engine(const StatusBlock& s) {
     char buf[700];
     const char* clock = s.ptp_state == 2 ? "locked to" : s.ptp_state == 3 ? "this PC is master" : s.ptp_state == 4 ? "free-running (no master found)" : s.ptp_state == 1 ? "searching / unlocked" : "off";
     snprintf(buf, sizeof buf,
-             "Clock:      PTP %s %s   offset %+.1f us\n"
+             "Clock:      PTP %s %s   offset %+.1f us   jitter %.0f us\n"
              "Receive:    %s   %u packets, %u lost, %u resyncs%s%s\n"
              "Transmit:   %u packets, %u underruns   (%s, buffer %u, %u Hz, %u late periods)",
-             clock, s.ptp_state == 2 ? s.ptp_master : "", s.ptp_offset_ns / 1000.0,
+             clock, s.ptp_state == 2 ? s.ptp_master : "", s.ptp_offset_ns / 1000.0, s.ptp_jitter_ns / 1000.0,
              s.rx_active ? "receiving" : "NO DATA", s.rx_packets, s.rx_lost, s.rx_resyncs, s.message[0] ? "\n            " : "", s.message,
              s.tx_packets, s.tx_underruns, s.local_ip, s.buffer_frames, s.sample_rate, s.late_periods);
     return buf;

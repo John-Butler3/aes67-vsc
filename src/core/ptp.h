@@ -46,6 +46,7 @@ public:
     PtpState state() const { return state_.load(); }
     int64_t offset_ns() const { return last_offset_ns_.load(); }
     int64_t path_delay_ns() const { return path_delay_ns_.load(); }
+    int64_t jitter_ns() const { return jitter_ns_.load(); }       // smoothed |servo error|
     std::string master_identity() const;          // "00-1D-C1-FF-FE-12-34-56" of the GM we follow (or ours)
     std::string own_identity() const;
     std::string refclk_string() const;            // SDP a=ts-refclk value
@@ -101,6 +102,11 @@ private:
     std::atomic<PtpState> state_{PtpState::Off};
     std::atomic<int64_t> last_offset_ns_{0};
     std::atomic<int64_t> path_delay_ns_{0};
+    std::atomic<int64_t> jitter_ns_{0};
+    double jitter_ema_ = 0;        // EMA of |e| in ns
+    int outliers_in_row_ = 0;
+    int64_t first_good_mono_ = 0;  // when the error first stayed small (for lock)
+    int64_t last_good_mono_ = 0;
     std::atomic<uint32_t> sync_count_{0};
     bool is_master_ = false;
     bool have_master_ = false;
@@ -117,7 +123,6 @@ private:
     int64_t last_servo_mono_ = 0;
     int64_t last_t1_ = 0, last_t2_ = 0;          // most recent sync pair
     std::array<int64_t, 8> delay_win_{}; int delay_win_n_ = 0, delay_win_i_ = 0;
-    int good_in_row_ = 0;
 
     // master state
     uint16_t sync_seq_ = 0, ann_seq_ = 0;

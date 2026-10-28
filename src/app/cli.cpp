@@ -65,7 +65,7 @@ static void print_status(const StatusBlock& s) {
     int64_t age = wall_ms() - s.updated_ms;
     if (!s.engine_running || age > 3000) { printf("Driver: not running (no audio application has the device open)\n"); return; }
     printf("Driver: running (pid %u, %u Hz, buffer %u frames, local IP %s)\n", s.pid, s.sample_rate, s.buffer_frames, s.local_ip);
-    printf("  PTP     : %s, master %s, offset %+.1f us, path delay %.1f us\n", ptp_state_name(s.ptp_state), s.ptp_master, s.ptp_offset_ns / 1000.0, s.ptp_path_delay_ns / 1000.0);
+    printf("  PTP     : %s, master %s, offset %+.1f us, jitter %.1f us, path delay %.1f us\n", ptp_state_name(s.ptp_state), s.ptp_master, s.ptp_offset_ns / 1000.0, s.ptp_jitter_ns / 1000.0, s.ptp_path_delay_ns / 1000.0);
     printf("  Receive : %s, %u packets, %u lost, %u resyncs, %u bad, arrival offset %d frames\n", s.rx_active ? "active" : "no data", s.rx_packets, s.rx_lost, s.rx_resyncs, s.rx_bad, s.rx_offset_frames);
     printf("  Transmit: %u packets, %u underruns\n", s.tx_packets, s.tx_underruns);
     printf("  Engine  : %u periods, %u late\n", s.periods, s.late_periods);

@@ -177,6 +177,28 @@ programme audio rather than speech.
 * Two instances of the driver on one PC (two hosts open at once) would both transmit to the
   same group; only open the device from one application at a time.
 
+## Troubleshooting
+
+* **Clock shows "searching / unlocked" or flips in and out of lock.** Use wired Ethernet: Wi-Fi
+  drops multicast and delays PTP by milliseconds, which no servo can follow. Check the *jitter*
+  value in the status view: well under 100 us is normal on a switched LAN; hundreds of
+  microseconds point at a busy PC (set the Windows power plan to High performance, disable
+  energy-saving options on the NIC) or a non-PTP-aware network path. The driver only reports
+  "locked" after the error has stayed small for a second and only drops it after three bad
+  seconds, so an occasional noisy timestamp does not show as a sync loss.
+* **Stream arrives for a few minutes, then stops, or comes and goes.** Managed switches with
+  IGMP snooping but no IGMP querier forget multicast memberships after a few minutes. Enable a
+  querier on the switch (or disable snooping on a small network). The driver re-joins the
+  group automatically when a stream disappears for 3 s, which recovers from this case, but a
+  querier is the proper fix.
+* **Clicks or dropouts.** Raise the link offset (4 ms default; try 8 ms on a congested
+  network), check the *lost* and *late periods* counters in the status view, and make sure
+  only one of driver and bridge is running. On the sending side both PCs should see the same
+  PTP master; two free-running clocks drift and force a small correction every second.
+* **Device not listed in an application.** Run `aes67vsc check`; it verifies the
+  registration and loads the driver like a host would. Only 64-bit ASIO applications see it.
+* **Logs.** `%APPDATA%\AES67VSC\driver.log`, `panel.log` and `bridge.log`.
+
 ## Build from source
 
 Windows (Visual Studio 2019+ or MinGW-w64, CMake 3.16+):
