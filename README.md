@@ -36,25 +36,39 @@ Only 64-bit hosts are supported by the prebuilt package.
 
 ## Use
 
-Open **aes67vsc-panel.exe** (or press the ASIO *Control Panel* button in your host):
+Start **aes67vsc-panel.exe** (the ASIO *Control Panel* button in your host opens it too). It is a
+tray application: closing or minimising the window hides it into the notification area, the icon
+colour shows the overall state at a glance, and the right-click menu starts/stops the bridge or
+exits. Tick *Start this app with Windows* to have it run at logon, hidden in the tray.
 
-* **Device**: pick the network interface that is on the AES67 network, the sample rate,
-  the ASIO buffer size (16 to 4096 frames; multiples of the 1 ms packet keep timing tidiest), PTP mode/domain and the
-  *link offset* (receive playout delay, default 4 ms; 1-2 ms works on a quiet switched LAN).
+| Tray icon | Meaning |
+|---|---|
+| grey | idle, nothing is streaming |
+| green | streaming, clock locked (or this PC is master), receive stream arriving |
+| yellow | streaming but something is off: no PTP lock, no receive data, or driver and bridge both running |
+| red | the bridge reported an error (hover for the message, open the window for details) |
+
+The window has five parts:
+
+* **Device**: the network interface on the AES67 network, sample rate, ASIO buffer size, PTP
+  mode/domain and the *link offset* (receive playout delay, default 4 ms; 1-2 ms works on a
+  quiet switched LAN).
 * **Receive**: *Load SDP file...* with the SDP exported by the sending device (Dante
-  Controller > AES67 flows, RAVENNA/ANEMAN, another PC with this driver, ...). You can also
-  drop an `.sdp` file onto the panel or onto `aes67vsc-panel.exe`. Streams announced via
-  SAP appear in the *Discovered* list. For multichannel streams choose which stream
-  channel feeds input 1.
-* **Transmit**: set a stream name, multicast address and port, then **Save SDP file...**
-  (or copy it to the clipboard) and give that file to the receiver. The stream is also
-  announced via SAP so AES67 devices with SAP discovery list it automatically.
-* **Status** shows the live state of the driver while a host has the device open:
-  PTP lock and offset, received/lost packets, transmitted packets, engine timing.
+  Controller > AES67 flows, RAVENNA/ANEMAN, another PC with this driver, ...), or drop an
+  `.sdp` file onto the window. Streams announced via SAP appear in the *Discovered* list. For
+  multichannel streams choose which stream channel feeds input 1.
+* **Transmit**: stream name, multicast address and port, then **Save SDP file...** (or copy
+  to the clipboard) and give that file to the receiver. The stream is also announced via SAP.
+* **Windows audio bridge**: makes the streams available to ordinary applications (Teams,
+  browsers, players) through Windows audio devices. Pick where the AES67 input is played and
+  which device (or playback loopback) is sent as the AES67 output, press *Start bridge*, or
+  press **Teams preset** which configures everything for a Teams/Zoom call (see below).
+  *Start bridge with this app* restarts it automatically at logon.
+* **Status**: what is running right now: the ASIO driver (inside an audio application), the
+  bridge, PTP clock state and offset, received/lost packets, transmitted packets, errors.
 
-Press **Apply** to save. The running driver picks up stream and clock changes on the fly;
-changes to the interface, sample rate or buffer size make it ask the host to restart the
-device.
+Press **Apply** to save. The running driver and bridge pick up stream and clock changes on the
+fly; interface, sample rate or buffer changes restart them.
 
 ### Command line
 
@@ -74,36 +88,27 @@ aes67vsc selftest                 loop a tone through TX and RX on this machine
 
 The ASIO driver is only visible to ASIO applications. Windows Sound settings list WDM/WASAPI
 devices, and those need a kernel driver signed through Microsoft, which a free project cannot
-ship. `aes67vsc-bridge.exe` closes that gap by routing the AES67 streams to and from any
-existing Windows audio device:
+ship. The **bridge** closes that gap by routing the AES67 streams to and from any existing
+Windows audio device. Start it from the panel (recommended, it then shows in the status view and
+tray icon) or from the command line:
 
 ```
 aes67vsc-bridge --list                                   show playback / recording devices
-aes67vsc-bridge                                          AES67 in -> default speakers, default mic -> AES67 out
-aes67vsc-bridge --play "Speakers" --loopback "Speakers"  listen to the stream and send everything the PC plays
-aes67vsc-bridge --play "CABLE Input" --loopback "Speakers"
+aes67vsc-bridge                                          use the devices saved in the panel
+aes67vsc-bridge --play "Speakers" --loopback "Speakers"  hear the stream, send everything the PC plays
+aes67vsc-bridge --play "CABLE Input" --loopback default  with VB-CABLE: apps record the AES67 audio from "CABLE Output"
 ```
 
-For other applications to *record* the AES67 audio, install the free
-[VB-CABLE](https://vb-audio.com/Cable/) virtual cable, point `--play` at **CABLE Input** and
-let the apps record from **CABLE Output**. For applications to *send* to AES67 silently, give
-them a second cable (or VB-CABLE A/B) as output and use `--loopback` on that cable's playback
-side. The bridge uses the same configuration as the ASIO driver (streams, interface, clock),
-so set everything up in `aes67vsc-panel.exe` first. It runs in a console window; create a
-shortcut or a Task Scheduler entry to start it at logon. Device names are matched by
-substring, case-insensitively.
+Playback and recording devices run on their own clocks; the bridge keeps about 20 ms of buffer
+on each side and resamples by a fraction of a percent to track the drift.
 
 ### Microsoft Teams, Zoom, browsers
 
 These applications only see Windows audio devices. Install the free
-[VB-CABLE](https://vb-audio.com/Cable/) (reboot once), then double-click
-`start-bridge-teams.bat`. It starts the bridge as
-
-```
-aes67vsc-bridge --play "CABLE Input" --loopback default
-```
-
-and tells you what to pick in Teams > Settings > Devices:
+[VB-CABLE](https://vb-audio.com/Cable/) (reboot once), open the panel and press **Teams preset**
+(or run `start-bridge-teams.bat`). The bridge then plays the AES67 input into *CABLE Input*
+and sends the loopback of your default playback device as the AES67 output. In Teams >
+Settings > Devices choose:
 
 | Teams setting | Device | Carries |
 |---|---|---|
@@ -111,15 +116,11 @@ and tells you what to pick in Teams > Settings > Devices:
 | Speaker | your normal speakers / headset | sent as the AES67 **output** stream |
 
 With the default playback device as the source, everything the PC plays goes into the
-AES67 output stream, not only Teams. If you add the donationware **VB-CABLE A**, the script
-detects it automatically: set Teams' speaker to *CABLE-A Input* and only Teams audio is
-sent. In Windows Sound settings set both cable endpoints to 2 channels, 48000 Hz so
-Windows does not resample. In Teams, switch noise suppression off and enable high fidelity
-music mode when transmitting programme audio rather than speech, otherwise Teams will
-process the feed heavily.
-
-Playback and recording devices run on their own clocks; the bridge keeps about 20 ms of
-buffer on each side and resamples by a fraction of a percent to track the drift.
+AES67 output stream, not only Teams. If you add the donationware **VB-CABLE A**, the preset
+detects it: set Teams' speaker to *CABLE-A Input* and only Teams audio is sent. In Windows
+Sound settings set both cable endpoints to 2 channels, 48000 Hz so Windows does not resample.
+In Teams, switch noise suppression off and enable high fidelity music mode when transmitting
+programme audio rather than speech.
 
 ## How it works
 
@@ -132,7 +133,8 @@ buffer on each side and resamples by a fraction of a percent to track the drift.
                    |- ptp thread      IEEE 1588 slave (or master), PI servo
                    |- sap thread      SAP announcement of the transmit stream
                    '- housekeeping    status to shared memory, config file watch
- aes67vsc-panel.exe / aes67vsc.exe    read/write config.ini, read status, SAP listener
+ aes67vsc-panel.exe (tray)            config.ini, status view, SAP listener, hosts the bridge
+ aes67vsc-bridge.exe / aes67vsc.exe   console bridge / command line tools
 ```
 
 * Receive timing: packets are placed in a ring by RTP timestamp. The playout pointer is

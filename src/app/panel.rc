@@ -1,12 +1,17 @@
 #include <windows.h>
 #include "panel_res.h"
 #ifndef AES67VSC_VERSION
-#define AES67VSC_VERSION "0.1.0"
+#define AES67VSC_VERSION "0.3.0"
 #endif
 
 1 RT_MANIFEST "panel.manifest"
+IDI_APP         ICON "../../res/app.ico"
+IDI_TRAY_GREY   ICON "../../res/tray_grey.ico"
+IDI_TRAY_GREEN  ICON "../../res/tray_green.ico"
+IDI_TRAY_YELLOW ICON "../../res/tray_yellow.ico"
+IDI_TRAY_RED    ICON "../../res/tray_red.ico"
 
-IDD_MAIN DIALOGEX 0, 0, 470, 338
+IDD_MAIN DIALOGEX 0, 0, 470, 400
 STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX
 EXSTYLE WS_EX_ACCEPTFILES
 CAPTION "AES67 Virtual Sound Card"
@@ -53,17 +58,29 @@ BEGIN
     PUSHBUTTON      "Copy SDP to clipboard", IDC_TX_COPY, 330, 150, 90, 14
     LTEXT           "Receivers (another PC with this driver, Dante/AES67 devices, Ravenna...) subscribe with this SDP.", -1, 248, 170, 210, 20
 
-    GROUPBOX        "Status", -1, 7, 200, 456, 108
-    LTEXT           "", IDC_STATUS, 15, 212, 440, 92, SS_LEFT | SS_NOPREFIX
+    GROUPBOX        "Windows audio bridge (Teams, browsers, any app)", -1, 7, 200, 456, 68
+    LTEXT           "Play AES67 input to:", -1, 15, 215, 78, 10
+    COMBOBOX        IDC_BR_PLAY, 95, 213, 200, 160, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    PUSHBUTTON      "Start bridge", IDC_BR_START, 305, 212, 70, 14
+    PUSHBUTTON      "Teams preset", IDC_BR_TEAMS, 380, 212, 76, 14
+    LTEXT           "Send to AES67 from:", -1, 15, 233, 78, 10
+    COMBOBOX        IDC_BR_SOURCE, 95, 231, 200, 160, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    CONTROL         "Start bridge with this app", IDC_BR_AUTO, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 305, 232, 150, 10
+    CONTROL         "Start this app with Windows (hidden in the tray)", IDC_AUTORUN, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 250, 200, 10
+    LTEXT           "", IDC_BR_STATUS, 220, 250, 236, 12, SS_LEFT | SS_NOPREFIX
 
-    PUSHBUTTON      "Open config folder", IDC_OPENCFG, 7, 316, 80, 15
-    DEFPUSHBUTTON   "Apply", IDC_APPLY, 352, 316, 52, 15
-    PUSHBUTTON      "Close", IDCANCEL, 410, 316, 52, 15
+    GROUPBOX        "Status", -1, 7, 272, 456, 98
+    LTEXT           "", IDC_STATUS, 15, 284, 440, 82, SS_LEFT | SS_NOPREFIX
+
+    PUSHBUTTON      "Open config folder", IDC_OPENCFG, 7, 378, 80, 15
+    DEFPUSHBUTTON   "Apply", IDC_APPLY, 294, 378, 52, 15
+    PUSHBUTTON      "Hide", IDCANCEL, 352, 378, 52, 15
+    PUSHBUTTON      "Exit", IDC_EXIT, 410, 378, 52, 15
 END
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 0,2,2,0
- PRODUCTVERSION 0,2,2,0
+ FILEVERSION 0,3,0,0
+ PRODUCTVERSION 0,3,0,0
  FILEOS VOS_NT_WINDOWS32
  FILETYPE VFT_APP
 BEGIN

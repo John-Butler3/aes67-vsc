@@ -1,6 +1,10 @@
 #pragma once
 #define IDD_MAIN          100
 #define IDI_APP           101
+#define IDI_TRAY_GREY     102
+#define IDI_TRAY_GREEN    103
+#define IDI_TRAY_YELLOW   104
+#define IDI_TRAY_RED      105
 #define IDC_IFACE         1001
 #define IDC_RATE          1002
 #define IDC_BUFFER        1003
@@ -25,3 +29,15 @@
 #define IDC_STATUS        1030
 #define IDC_OPENCFG       1031
 #define IDC_APPLY         1032
+#define IDC_EXIT          1033
+#define IDC_BR_PLAY       1040
+#define IDC_BR_SOURCE     1041
+#define IDC_BR_START      1042
+#define IDC_BR_TEAMS      1043
+#define IDC_BR_AUTO       1044
+#define IDC_AUTORUN       1045
+#define IDC_BR_STATUS     1046
+#define IDM_SHOW          2001
+#define IDM_BRIDGE        2002
+#define IDM_TEAMS         2003
+#define IDM_EXIT          2004

@@ -75,6 +75,11 @@ std::string Config::to_ini() const {
     o << "ttl=" << tx_ttl << "\n";
     o << "dscp=" << tx_dscp << "\n";
     o << "sap_announce=" << (sap_announce ? 1 : 0) << "\n";
+    o << "\n[bridge]\n";
+    o << "autostart=" << (bridge_autostart ? 1 : 0) << "\n";
+    o << "play=" << esc(bridge_play) << "\n";
+    o << "source=" << esc(bridge_source) << "\n";
+    o << "loopback=" << (bridge_loopback ? 1 : 0) << "\n";
     return o.str();
 }
 
@@ -118,6 +123,11 @@ bool Config::from_ini(const std::string& text, std::string& err) {
             else if (k == "framecount") c.rx.framecount = I();
             else if (k == "channel_offset") c.rx_channel_offset = I();
             else if (k == "sdp") c.rx_sdp_text = unesc(v);
+        } else if (sect == "bridge") {
+            if (k == "autostart") c.bridge_autostart = I() != 0;
+            else if (k == "play") c.bridge_play = unesc(v);
+            else if (k == "source") c.bridge_source = unesc(v);
+            else if (k == "loopback") c.bridge_loopback = I() != 0;
         } else if (sect == "tx") {
             if (k == "enabled") c.tx_enabled = I() != 0;
             else if (k == "name") c.tx_name = unesc(v);

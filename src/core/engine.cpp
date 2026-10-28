@@ -34,7 +34,7 @@ bool Engine::start(const Config& cfg, int buffer_frames, AudioCallback* cb, std:
     tx_fpp_ = txd.frames_per_packet();
     link_offset_frames_ = (int)std::lround(cfg.link_offset_ms * rate_ / 1000.0);
 
-    share_.create();
+    share_.create(status_name_);
     cfg_mtime_ = file_mtime(Config::default_path());
 
     if (!start_ptp(err)) { LOG_W("PTP unavailable: %s (free-running)", err.c_str()); message_ = "PTP: " + err; err.clear(); }

@@ -42,11 +42,11 @@ if(WIN32)
     target_link_options(aes67asio PRIVATE -Wl,--enable-stdcall-fixup)
   endif()
 
-  add_executable(aes67vsc-bridge src/app/bridge.cpp)
+  add_executable(aes67vsc-bridge src/app/bridge.cpp src/app/bridge_core.cpp)
   target_link_libraries(aes67vsc-bridge aes67core avrt)
 
-  add_executable(aes67vsc-panel WIN32 src/app/panel.cpp src/app/panel.rc)
-  target_link_libraries(aes67vsc-panel aes67core comdlg32 comctl32 gdi32 user32)
+  add_executable(aes67vsc-panel WIN32 src/app/panel.cpp src/app/bridge_core.cpp src/app/panel.rc)
+  target_link_libraries(aes67vsc-panel aes67core comdlg32 comctl32 gdi32 user32 avrt)
   if(MSVC)
     # The manifest is embedded from panel.rc; stop the linker generating a second one.
     target_link_options(aes67vsc-panel PRIVATE /MANIFEST:NO)

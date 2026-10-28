@@ -10,7 +10,8 @@
 
 namespace aes67 {
 
-static const char* kName = "AES67VSC_Status_v1";
+const char* StatusShare::kDriverName = "AES67VSC_Status_v1";
+const char* StatusShare::kBridgeName = "AES67VSC_Bridge_v1";
 
 int64_t wall_ms() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
@@ -23,9 +24,10 @@ StatusShare::StatusShare() {}
 StatusShare::~StatusShare() { close(); }
 
 #ifdef _WIN32
-bool StatusShare::create() {
+bool StatusShare::create(const char* name) {
     close();
-    std::string n = std::string("Local\\") + kName;
+    name_ = name ? name : kDriverName;
+    std::string n = std::string("Local\\") + name_;
     handle_ = CreateFileMappingA(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, sizeof(StatusBlock), n.c_str());
     if (!handle_) return false;
     blk_ = (StatusBlock*)MapViewOfFile(handle_, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(StatusBlock));
@@ -35,9 +37,10 @@ bool StatusShare::create() {
     owner_ = true;
     return true;
 }
-bool StatusShare::open() {
+bool StatusShare::open(const char* name) {
     close();
-    std::string n = std::string("Local\\") + kName;
+    name_ = name ? name : kDriverName;
+    std::string n = std::string("Local\\") + name_;
     handle_ = OpenFileMappingA(FILE_MAP_READ, FALSE, n.c_str());
     if (!handle_) return false;
     blk_ = (StatusBlock*)MapViewOfFile(handle_, FILE_MAP_READ, 0, 0, sizeof(StatusBlock));
@@ -50,9 +53,10 @@ void StatusShare::close() {
     owner_ = false;
 }
 #else
-bool StatusShare::create() {
+bool StatusShare::create(const char* name) {
     close();
-    std::string n = std::string("/") + kName;
+    name_ = name ? name : kDriverName;
+    std::string n = std::string("/") + name_;
     fd_ = shm_open(n.c_str(), O_CREAT | O_RDWR, 0644);
     if (fd_ < 0) return false;
     if (ftruncate(fd_, sizeof(StatusBlock)) != 0) { ::close(fd_); fd_ = -1; return false; }
@@ -63,9 +67,10 @@ bool StatusShare::create() {
     owner_ = true;
     return true;
 }
-bool StatusShare::open() {
+bool StatusShare::open(const char* name) {
     close();
-    std::string n = std::string("/") + kName;
+    name_ = name ? name : kDriverName;
+    std::string n = std::string("/") + name_;
     fd_ = shm_open(n.c_str(), O_RDONLY, 0);
     if (fd_ < 0) return false;
     blk_ = (StatusBlock*)mmap(nullptr, sizeof(StatusBlock), PROT_READ, MAP_SHARED, fd_, 0);
@@ -80,7 +85,7 @@ void StatusShare::close() {
 #endif
 
 bool StatusShare::read(StatusBlock& out) {
-    if (!blk_ && !open()) return false;
+    if (!blk_ && !open(name_.empty() ? nullptr : name_.c_str())) return false;
     memcpy(&out, blk_, sizeof out);
     if (out.magic != 0x41453637) return false;
     return true;

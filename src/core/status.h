@@ -38,8 +38,10 @@ class StatusShare {
 public:
     StatusShare();
     ~StatusShare();
-    bool create();                 // publisher
-    bool open();                   // reader
+    static const char* kDriverName;   // "AES67VSC_Status_v1"  (ASIO driver inside the audio host)
+    static const char* kBridgeName;   // "AES67VSC_Bridge_v1"  (bridge engine)
+    bool create(const char* name = nullptr);   // publisher (default: driver block)
+    bool open(const char* name = nullptr);     // reader
     StatusBlock* ptr() { return blk_; }
     bool read(StatusBlock& out);   // copy; false if not available
     void close();
@@ -48,6 +50,7 @@ private:
     void* handle_ = nullptr;
     int fd_ = -1;
     bool owner_ = false;
+    std::string name_;
 };
 
 int64_t wall_ms();

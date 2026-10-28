@@ -320,6 +320,9 @@ int main(int argc, char** argv) {
         }
         StatusShare sh; StatusBlock s;
         if (sh.read(s)) print_status(s); else printf("Driver: not running\n");
+        StatusShare bh; StatusBlock b;
+        if (bh.open(StatusShare::kBridgeName) && bh.read(b) && b.engine_running && wall_ms() - b.updated_ms < 3000) { printf("Bridge engine:\n"); print_status(b); }
+        else printf("Bridge: not running\n");
         return 0;
     }
     if (cmd == "discover") {

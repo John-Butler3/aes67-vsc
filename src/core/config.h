@@ -44,6 +44,12 @@ struct Config {
     int tx_dscp = 34;                    // AF41 for media per AES67
     bool sap_announce = true;
 
+    // [bridge] (Windows audio device bridge hosted by the tray application)
+    bool bridge_autostart = false;         // start the bridge when the tray app starts
+    std::string bridge_play = "default";   // playback device for the received stream ("none" to disable)
+    std::string bridge_source = "default"; // recording device (or playback device when bridge_loopback) feeding the transmit stream
+    bool bridge_loopback = false;
+
     std::string to_ini() const;
     bool from_ini(const std::string& text, std::string& err);
     static std::string default_path();   // <config_dir>/config.ini

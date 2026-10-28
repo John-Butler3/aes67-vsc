@@ -49,6 +49,8 @@ public:
 
     // Enable watching the config file for changes (default on).
     void set_watch_config(bool on) { watch_config_ = on; }
+    // Shared-memory status block name (StatusShare::kDriverName by default); set before start().
+    void set_status_name(const char* name) { status_name_ = name; }
 
 private:
     struct RxSlot { int32_t s[kChannels]; };
@@ -120,6 +122,7 @@ private:
     std::atomic<uint32_t> periods_{0}, late_periods_{0};
     std::atomic<uint64_t> sample_pos_{0};
     int64_t cfg_mtime_ = 0;
+    const char* status_name_ = nullptr;
 };
 
 } // namespace aes67

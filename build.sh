@@ -29,10 +29,10 @@ windows() {
   # console CLI
   $CXX_WIN $WFLAGS $CORE src/app/cli.cpp -o build/win64/aes67vsc.exe $WLIBS
   # WASAPI bridge
-  $CXX_WIN $WFLAGS $CORE src/app/bridge.cpp -o build/win64/aes67vsc-bridge.exe $WLIBS -lavrt
+  $CXX_WIN $WFLAGS $CORE src/app/bridge.cpp src/app/bridge_core.cpp -o build/win64/aes67vsc-bridge.exe $WLIBS -lavrt
   # control panel GUI
   $WINDRES src/app/panel.rc -O coff -o build/win64/panel.res
-  $CXX_WIN $WFLAGS -mwindows $CORE src/app/panel.cpp build/win64/panel.res -o build/win64/aes67vsc-panel.exe $WLIBS -lcomdlg32 -lcomctl32 -lgdi32 -luser32
+  $CXX_WIN $WFLAGS -mwindows $CORE src/app/panel.cpp src/app/bridge_core.cpp build/win64/panel.res -o build/win64/aes67vsc-panel.exe $WLIBS -lcomdlg32 -lcomctl32 -lgdi32 -luser32 -lavrt
   ${STRIP:-x86_64-w64-mingw32-strip} build/win64/aes67asio.dll build/win64/aes67vsc.exe build/win64/aes67vsc-panel.exe build/win64/aes67vsc-bridge.exe
   cp scripts/install.bat scripts/uninstall.bat scripts/start-bridge-teams.bat README.md LICENSE build/win64/ 2>/dev/null || true
   cp sdp/example-receive.sdp build/win64/ 2>/dev/null || true
