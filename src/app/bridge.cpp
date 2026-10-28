@@ -123,6 +123,12 @@ static IMMDevice* find_device(IMMDeviceEnumerator* en, EDataFlow flow, const std
 }
 
 // ---------------------------------------------------------------- sample format helpers
+// GUIDs by value so that neither toolchain needs the import libraries that define them.
+static const CLSID kClsidEnumerator   = {0xbcde0395, 0xe52f, 0x467c, {0x8e, 0x3d, 0xc4, 0x57, 0x92, 0x91, 0x69, 0x2e}};
+static const IID   kIidEnumerator     = {0xa95664d2, 0x9614, 0x4f35, {0xa7, 0x46, 0xde, 0x8d, 0xb6, 0x36, 0x17, 0xe6}};
+static const IID   kIidAudioClient    = {0x1cb9ad4c, 0xdbfa, 0x4c32, {0xb1, 0x78, 0xc2, 0xf5, 0x68, 0xa7, 0x03, 0xb2}};
+static const IID   kIidRenderClient   = {0xf294acfc, 0x3146, 0x4483, {0xa7, 0xbf, 0xad, 0xdc, 0xa7, 0xc2, 0x60, 0xe2}};
+static const IID   kIidCaptureClient  = {0xc8adbd64, 0xe71e, 0x48a0, {0xa4, 0xde, 0x18, 0x5c, 0x39, 0x5c, 0xd3, 0x17}};
 static const GUID kSubtypeFloat = {0x00000003, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
 struct Fmt { int rate = 48000; int ch = 2; int bits = 32; bool is_float = false; int block = 8; };
 static Fmt parse_fmt(const WAVEFORMATEX* w) {
@@ -172,7 +178,7 @@ struct Bridge : AudioCallback {
         CoInitializeEx(nullptr, COINIT_MULTITHREADED);
         make_thread_realtime("bridge-render");
         IAudioClient* ac = nullptr; IAudioRenderClient* rc = nullptr; WAVEFORMATEX* wf = nullptr;
-        HRESULT hr = dev->Activate(IID_IAudioClient, CLSCTX_ALL, nullptr, (void**)&ac);
+        HRESULT hr = dev->Activate(kIidAudioClient, CLSCTX_ALL, nullptr, (void**)&ac);
         if (FAILED(hr)) { LOG_E("playback: Activate failed 0x%08lx", (unsigned long)hr); return; }
         ac->GetMixFormat(&wf);
         Fmt f = parse_fmt(wf);
@@ -181,7 +187,7 @@ struct Bridge : AudioCallback {
         if (FAILED(hr)) { LOG_E("playback: Initialize failed 0x%08lx", (unsigned long)hr); return; }
         ac->SetEventHandle(ev);
         UINT32 bufFrames = 0; ac->GetBufferSize(&bufFrames);
-        ac->GetService(IID_IAudioRenderClient, (void**)&rc);
+        ac->GetService(kIidRenderClient, (void**)&rc);
         LOG_I("playback -> \"%s\": %d Hz, %d ch, %s%d bit, buffer %u frames", name.c_str(), f.rate, f.ch, f.is_float ? "float" : "int", f.bits, bufFrames);
         Resampler rs; double nominal = (double)engine_rate / f.rate;
         const size_t target = (size_t)(engine_rate * 0.02) + (size_t)(bufFrames * nominal);   // ~20 ms + one device buffer
@@ -219,14 +225,14 @@ struct Bridge : AudioCallback {
         CoInitializeEx(nullptr, COINIT_MULTITHREADED);
         make_thread_realtime("bridge-capture");
         IAudioClient* ac = nullptr; IAudioCaptureClient* cc = nullptr; WAVEFORMATEX* wf = nullptr;
-        HRESULT hr = dev->Activate(IID_IAudioClient, CLSCTX_ALL, nullptr, (void**)&ac);
+        HRESULT hr = dev->Activate(kIidAudioClient, CLSCTX_ALL, nullptr, (void**)&ac);
         if (FAILED(hr)) { LOG_E("capture: Activate failed 0x%08lx", (unsigned long)hr); return; }
         ac->GetMixFormat(&wf);
         Fmt f = parse_fmt(wf);
         DWORD flags = loopback ? AUDCLNT_STREAMFLAGS_LOOPBACK : 0;
         hr = ac->Initialize(AUDCLNT_SHAREMODE_SHARED, flags, 200000, 0, wf, nullptr);
         if (FAILED(hr)) { LOG_E("capture: Initialize failed 0x%08lx", (unsigned long)hr); return; }
-        ac->GetService(IID_IAudioCaptureClient, (void**)&cc);
+        ac->GetService(kIidCaptureClient, (void**)&cc);
         LOG_I("capture <- \"%s\"%s: %d Hz, %d ch, %s%d bit", name.c_str(), loopback ? " (loopback)" : "", f.rate, f.ch, f.is_float ? "float" : "int", f.bits);
         // Resample device -> engine using a small staging FIFO.
         Fifo stage(32768); Resampler rs; double nominal = (double)f.rate / engine_rate;
@@ -290,7 +296,7 @@ int main(int argc, char** argv) {
     }
     CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     IMMDeviceEnumerator* en = nullptr;
-    if (FAILED(CoCreateInstance(CLSID_MMDeviceEnumerator, nullptr, CLSCTX_ALL, IID_IMMDeviceEnumerator, (void**)&en))) { fprintf(stderr, "cannot create device enumerator\n"); return 2; }
+    if (FAILED(CoCreateInstance(kClsidEnumerator, nullptr, CLSCTX_ALL, kIidEnumerator, (void**)&en))) { fprintf(stderr, "cannot create device enumerator\n"); return 2; }
     if (list) {
         printf("Playback devices:\n");  for (auto& d : list_devices(en, eRender))  printf("  %s\n", d.name.c_str());
         printf("Recording devices:\n"); for (auto& d : list_devices(en, eCapture)) printf("  %s\n", d.name.c_str());
