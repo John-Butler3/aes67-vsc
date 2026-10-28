@@ -19,8 +19,9 @@ which pair of stream channels feeds the two inputs.
 
 ## Install
 
-1. Download the `aes67-vsc-win64` package (or build it, see below) and unpack it to a
-   permanent folder, e.g. `C:\Program Files\AES67 VSC`.
+1. Download the latest `aes67-vsc-<version>-win64.zip` from the
+   [Releases page](https://github.com/John-Butler3/aes67-vsc/releases) (or build it, see
+   below) and unpack it to a permanent folder, e.g. `C:\Program Files\AES67 VSC`.
 2. Right-click `install.bat` and choose **Run as administrator**. It registers
    `aes67asio.dll` and adds a Windows Firewall rule for the UDP ports (319/320 PTP,
    5004 audio, 9875 SAP).
