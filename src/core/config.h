@@ -14,6 +14,7 @@ struct Config {
     // [general]
     std::string interface_ip = "auto";   // IPv4 of the NIC to use, or "auto"
     int sample_rate = 48000;             // 44100 / 48000 / 96000
+    int channels = 2;                    // 2 = stereo 2x2 device and stream; 1 = mono 1x1 (sum), 1-channel transmit stream
     int buffer_frames = 240;             // preferred ASIO buffer size (multiple of the packet size)
     double link_offset_ms = 4.0;         // receive playout delay
     int log_level = 1;                   // 0 debug .. 3 error

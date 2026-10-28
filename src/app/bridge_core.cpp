@@ -158,6 +158,7 @@ class BridgeImpl : public AudioCallback {
 public:
     Engine engine;
     int engine_rate = 48000;
+    bool mono = false;
     Fifo rx{65536}, tx{65536};          // rx: AES67 -> playback device, tx: capture device -> AES67
     std::atomic<uint32_t> rx_drop{0}, rx_under{0}, tx_drop{0}, tx_under{0};
     std::atomic<bool> tx_ready{false}, stop_flag{false}, restart{false}, running{false};
@@ -170,7 +171,11 @@ public:
     void set_error(const std::string& e) { std::lock_guard<std::mutex> g(err_mu); error = e; LOG_E("%s", e.c_str()); }
 
     void process(const int32_t* const* in, int32_t* const* out, int n, int64_t, int64_t, uint64_t) override {
-        for (int i = 0; i < n; i++) if (!rx.push(in[0][i], in[1][i])) rx_drop++;
+        for (int i = 0; i < n; i++) {
+            int32_t l = in[0][i], r = in[1][i];
+            if (mono) l = r = (l >> 1) + (r >> 1);
+            if (!rx.push(l, r)) rx_drop++;
+        }
         if (!tx_ready && tx.size() >= tx_target) tx_ready = true;
         for (int i = 0; i < n; i++) {
             if (!tx_ready || !tx.pop(out[0][i], out[1][i])) { out[0][i] = out[1][i] = 0; if (tx_ready) tx_under++; }
@@ -251,6 +256,7 @@ public:
                     if (!(fl & AUDCLNT_BUFFERFLAGS_SILENT)) {
                         const uint8_t* p = data + (size_t)i * f.block;
                         l = read_sample(p, f); r = f.ch > 1 ? read_sample(p + cb, f) : l;
+                        if (mono) l = r = (l >> 1) + (r >> 1);
                     }
                     if (!stage.push(l, r)) tx_drop++;
                 }
@@ -279,7 +285,7 @@ bool BridgeRunner::start(const Config& cfg, const std::string& play, const std::
     stop();
     impl_.reset(new BridgeImpl());
     BridgeImpl& b = *impl_;
-    b.engine_rate = cfg.sample_rate; b.loopback = loopback;
+    b.engine_rate = cfg.sample_rate; b.loopback = loopback; b.mono = cfg.channels == 1;
     IMMDeviceEnumerator* en = enumerator();
     if (!en) { err = "cannot access Windows audio devices"; impl_.reset(); return false; }
     if (lower(play) != "none") {

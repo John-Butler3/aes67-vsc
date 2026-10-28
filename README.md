@@ -14,7 +14,8 @@ application (DAWs, broadcast software, OBS via ASIO plugins, ...) as the device
   user-mode DLL registered with `regsvr32`. MIT licensed.
 
 Formats: L24 or L16 PCM, 44.1 / 48 / 96 kHz, 1 ms packets (AES67 default), any packet time
-from 125 us to 4 ms on receive. Streams with more than 2 channels are accepted; you choose
+from 125 us to 4 ms on receive. A **1 x 1 mono** mode sums the incoming stream to one input and
+transmits a 1-channel stream (mono sum of the output). Streams with more than 2 channels are accepted; you choose
 which pair of stream channels feeds the two inputs.
 
 ## Install
@@ -51,7 +52,8 @@ exits. Tick *Start this app with Windows* to have it run at logon, hidden in the
 The window has five parts:
 
 * **Device**: the network interface on the AES67 network, sample rate, ASIO buffer size, PTP
-  mode/domain and the *link offset* (receive playout delay, default 4 ms; 1-2 ms works on a
+  mode/domain, *Channels* (2 x 2 stereo, or 1 x 1 mono: incoming summed to one input, outgoing
+  sent as a 1-channel stream) and the *link offset* (receive playout delay, default 4 ms; 1-2 ms works on a
   quiet switched LAN).
 * **Receive from network** (driver inputs 1-2): *Load SDP file...* with the SDP exported by the sending device (Dante
   Controller > AES67 flows, RAVENNA/ANEMAN, another PC with this driver, ...), or drop an

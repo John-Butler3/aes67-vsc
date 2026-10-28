@@ -89,7 +89,8 @@ public:
         engine_.stop();
         return ASE_OK;
     }
-    ASIOError getChannels(long* in, long* out) override { if (in) *in = 2; if (out) *out = 2; return ASE_OK; }
+    long nch() const { return cfg_.channels == 1 ? 1 : 2; }
+    ASIOError getChannels(long* in, long* out) override { if (in) *in = nch(); if (out) *out = nch(); return ASE_OK; }
     ASIOError getLatencies(long* in, long* out) override {
         long fpp = frames_per_packet();
         long link = (long)std::lround(cfg_.link_offset_ms * cfg_.sample_rate / 1000.0);
@@ -138,11 +139,12 @@ public:
         return ASE_OK;
     }
     ASIOError getChannelInfo(ASIOChannelInfo* info) override {
-        if (!info || info->channel < 0 || info->channel >= 2) return ASE_InvalidParameter;
+        if (!info || info->channel < 0 || info->channel >= nch()) return ASE_InvalidParameter;
         info->isActive = active_[info->isInput ? 0 : 1][info->channel] ? ASIOTrue : ASIOFalse;
         info->channelGroup = 0;
         info->type = ASIOSTInt32LSB;
-        snprintf(info->name, sizeof info->name, "AES67 %s %ld", info->isInput ? "In" : "Out", info->channel + 1);
+        if (nch() == 1) snprintf(info->name, sizeof info->name, "AES67 %s (mono)", info->isInput ? "In" : "Out");
+        else snprintf(info->name, sizeof info->name, "AES67 %s %ld", info->isInput ? "In" : "Out", info->channel + 1);
         return ASE_OK;
     }
     ASIOError createBuffers(ASIOBufferInfo* infos, long num, long size, ASIOCallbacks* cb) override {
@@ -157,7 +159,7 @@ public:
         release_buffers();
         for (long i = 0; i < num; i++) {
             ASIOBufferInfo& b = infos[i];
-            if (b.channelNum < 0 || b.channelNum >= 2) { release_buffers(); return ASE_InvalidParameter; }
+            if (b.channelNum < 0 || b.channelNum >= nch()) { release_buffers(); return ASE_InvalidParameter; }
             int dir = b.isInput ? 0 : 1;
             for (int h = 0; h < 2; h++) {
                 int32_t* mem = (int32_t*)calloc((size_t)size, sizeof(int32_t));
@@ -202,7 +204,9 @@ public:
         (void)ptp_ns;
         if (!buffers_ready_ || !callbacks_) { for (int c = 0; c < 2; c++) memset(out[c], 0, sizeof(int32_t) * frames); return; }
         int idx = buffer_index_;
-        for (int c = 0; c < 2; c++) if (buf_[0][c][idx]) memcpy(buf_[0][c][idx], in[c], sizeof(int32_t) * frames);
+        const bool mono = nch() == 1;
+        if (mono) { if (buf_[0][0][idx]) for (int i = 0; i < frames; i++) buf_[0][0][idx][i] = (in[0][i] >> 1) + (in[1][i] >> 1); }
+        else for (int c = 0; c < 2; c++) if (buf_[0][c][idx]) memcpy(buf_[0][c][idx], in[c], sizeof(int32_t) * frames);
         sample_pos_ = pos + (uint64_t)frames;
         sys_time_ns_ = mono;
         if (use_time_info_ && callbacks_->bufferSwitchTimeInfo) {
@@ -217,7 +221,10 @@ public:
         } else if (callbacks_->bufferSwitch) {
             callbacks_->bufferSwitch(idx, ASIOTrue);
         }
-        for (int c = 0; c < 2; c++) {
+        if (mono) {
+            if (buf_[1][0][idx]) { memcpy(out[0], buf_[1][0][idx], sizeof(int32_t) * frames); memcpy(out[1], buf_[1][0][idx], sizeof(int32_t) * frames); }
+            else { memset(out[0], 0, sizeof(int32_t) * frames); memset(out[1], 0, sizeof(int32_t) * frames); }
+        } else for (int c = 0; c < 2; c++) {
             if (buf_[1][c][idx]) memcpy(out[c], buf_[1][c][idx], sizeof(int32_t) * frames);
             else memset(out[c], 0, sizeof(int32_t) * frames);
         }

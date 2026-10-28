@@ -148,6 +148,7 @@ static void load_to_ui(HWND dlg) {
     combo_fill(dlg, IDC_RATE, {"44100", "48000", "96000"}, g_cfg.sample_rate == 44100 ? 0 : g_cfg.sample_rate == 96000 ? 2 : 1);
     fill_buffer_combo(dlg, g_cfg.sample_rate, g_cfg.buffer_frames);
     combo_fill(dlg, IDC_PTPMODE, {"Automatic", "Follow only", "Master", "Off"}, (int)g_cfg.ptp_mode);
+    combo_fill(dlg, IDC_CHANNELS, {"2 x 2 stereo", "1 x 1 mono (sum)"}, g_cfg.channels == 1 ? 1 : 0);
     set_text(dlg, IDC_PTPDOMAIN, std::to_string(g_cfg.ptp_domain));
     char lo[32]; snprintf(lo, sizeof lo, "%g", g_cfg.link_offset_ms); set_text(dlg, IDC_LINKOFF, lo);
     CheckDlgButton(dlg, IDC_RX_ENABLE, g_cfg.rx_enabled && !g_cfg.rx.dest.empty() ? BST_CHECKED : BST_UNCHECKED);
@@ -171,6 +172,7 @@ static bool ui_to_cfg(HWND dlg, std::string& err) {
     c.sample_rate = rs == 0 ? 44100 : rs == 2 ? 96000 : 48000;
     c.buffer_frames = atoi(get_text(dlg, IDC_BUFFER).c_str());
     c.ptp_mode = (PtpMode)std::max(0, combo_sel(dlg, IDC_PTPMODE));
+    c.channels = combo_sel(dlg, IDC_CHANNELS) == 1 ? 1 : 2;
     c.ptp_domain = atoi(get_text(dlg, IDC_PTPDOMAIN).c_str());
     c.link_offset_ms = atof(get_text(dlg, IDC_LINKOFF).c_str());
     c.rx_enabled = IsDlgButtonChecked(dlg, IDC_RX_ENABLE) == BST_CHECKED;

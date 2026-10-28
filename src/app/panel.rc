@@ -28,8 +28,10 @@ BEGIN
     COMBOBOX        IDC_PTPMODE, 80, 38, 70, 80, CBS_DROPDOWNLIST | WS_TABSTOP
     LTEXT           "Domain:", -1, 158, 40, 28, 10
     EDITTEXT        IDC_PTPDOMAIN, 188, 38, 24, 12, ES_NUMBER
-    LTEXT           "Link offset / playout delay (ms):", -1, 262, 40, 110, 10
-    EDITTEXT        IDC_LINKOFF, 372, 38, 36, 12
+    LTEXT           "Link offset (ms):", -1, 222, 40, 56, 10
+    EDITTEXT        IDC_LINKOFF, 280, 38, 30, 12
+    LTEXT           "Channels:", -1, 320, 40, 34, 10
+    COMBOBOX        IDC_CHANNELS, 356, 38, 104, 60, CBS_DROPDOWNLIST | WS_TABSTOP
 
     GROUPBOX        "Receive from network (driver inputs 1-2)", -1, 7, 66, 226, 130
     CONTROL         "Enabled", IDC_RX_ENABLE, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 79, 50, 10
@@ -53,7 +55,7 @@ BEGIN
     EDITTEXT        IDC_TX_PORT, 406, 110, 36, 12, ES_NUMBER
     LTEXT           "Encoding:", -1, 248, 128, 50, 10
     COMBOBOX        IDC_TX_ENC, 300, 126, 50, 60, CBS_DROPDOWNLIST | WS_TABSTOP
-    LTEXT           "Packet time 1 ms, 2 channels (AES67)", -1, 356, 128, 104, 10
+    LTEXT           "Packet time 1 ms (AES67)", -1, 356, 128, 104, 10
     PUSHBUTTON      "Save SDP file...", IDC_TX_EXPORT, 248, 150, 76, 14
     PUSHBUTTON      "Copy SDP to clipboard", IDC_TX_COPY, 330, 150, 90, 14
     LTEXT           "Receivers (another PC with this driver, Dante/AES67 devices, Ravenna...) subscribe with this SDP.", -1, 248, 170, 210, 20
@@ -81,8 +83,8 @@ BEGIN
 END
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 0,3,4,0
- PRODUCTVERSION 0,3,4,0
+ FILEVERSION 0,4,0,0
+ PRODUCTVERSION 0,4,0,0
  FILEOS VOS_NT_WINDOWS32
  FILETYPE VFT_APP
 BEGIN

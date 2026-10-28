@@ -11,6 +11,7 @@
 #define IDC_LINKOFF       1004
 #define IDC_PTPMODE       1005
 #define IDC_PTPDOMAIN     1006
+#define IDC_CHANNELS      1007
 #define IDC_RX_ENABLE     1010
 #define IDC_RX_INFO       1011
 #define IDC_RX_LOAD       1012

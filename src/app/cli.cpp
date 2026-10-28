@@ -80,6 +80,7 @@ static bool apply_setting(Config& c, const std::string& kv, std::string& err) {
     auto B = [&] { return v == "1" || v == "true" || v == "on" || v == "yes"; };
     if (key == "general.interface") c.interface_ip = v.empty() ? "auto" : v;
     else if (key == "general.sample_rate") c.sample_rate = I();
+    else if (key == "general.channels") c.channels = I();
     else if (key == "general.buffer_frames") c.buffer_frames = I();
     else if (key == "general.link_offset_ms") c.link_offset_ms = atof(v.c_str());
     else if (key == "general.log_level") c.log_level = I();

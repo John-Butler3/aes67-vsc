@@ -228,6 +228,17 @@ static void test_config() {
     CHECK_STR(d.tx_dest, "239.2.2.2"); CHECK_EQ((int)d.tx_port, 5006); CHECK_STR(d.tx_name, "My TX"); CHECK(d.tx_encoding == Encoding::L16); CHECK(!d.sap_announce);
     StreamDesc t = d.tx_stream("192.168.1.10", "ptp=IEEE1588-2008:AA-BB-CC-FF-FE-DD-EE-FF:3");
     CHECK_EQ(t.frames_per_packet(), 96); CHECK_EQ(t.channels, 2); CHECK_STR(t.source, "192.168.1.10");
+    // mono mode -> 1-channel stream
+    d.channels = 1;
+    StreamDesc m = d.tx_stream("192.168.1.10", "");
+    CHECK_EQ(m.channels, 1);
+    std::string msdp = sdp_generate(m);
+    CHECK(msdp.find("L16/96000/1\r\n") != std::string::npos);
+    Config e2; std::string ee; CHECK(e2.from_ini(d.to_ini(), ee)); CHECK_EQ(e2.channels, 1);
+    // mono stream unpack (1 channel) leaves channel 2 silent; the engine duplicates it
+    uint8_t mono16[4] = {0x12, 0x34, 0x56, 0x78}; int32_t a[2], b2[2]; int32_t* dd[2] = {a, b2};
+    pcm_unpack(Encoding::L16, mono16, 2, 1, 0, dd, 2);
+    CHECK_EQ(a[0], (int32_t)0x12340000); CHECK_EQ(a[1], (int32_t)0x56780000); CHECK_EQ(b2[0], 0);
 }
 
 int main() {

@@ -40,6 +40,7 @@ std::string Config::to_ini() const {
     o << "[general]\n";
     o << "interface=" << interface_ip << "\n";
     o << "sample_rate=" << sample_rate << "\n";
+    o << "channels=" << channels << "\n";
     o << "buffer_frames=" << buffer_frames << "\n";
     o << "link_offset_ms=" << link_offset_ms << "\n";
     o << "log_level=" << log_level << "\n";
@@ -99,6 +100,7 @@ bool Config::from_ini(const std::string& text, std::string& err) {
         if (sect == "general") {
             if (k == "interface") c.interface_ip = v.empty() ? "auto" : v;
             else if (k == "sample_rate") c.sample_rate = I();
+            else if (k == "channels") c.channels = I();
             else if (k == "buffer_frames") c.buffer_frames = I();
             else if (k == "link_offset_ms") c.link_offset_ms = F();
             else if (k == "log_level") c.log_level = I();
@@ -143,6 +145,7 @@ bool Config::from_ini(const std::string& text, std::string& err) {
     }
     // sanity
     if (c.sample_rate != 44100 && c.sample_rate != 48000 && c.sample_rate != 96000) c.sample_rate = 48000;
+    if (c.channels != 1) c.channels = 2;
     if (c.buffer_frames < 16 || c.buffer_frames > 8192) c.buffer_frames = 240;
     if (c.link_offset_ms < 0.5) c.link_offset_ms = 0.5;
     if (c.link_offset_ms > 500) c.link_offset_ms = 500;
@@ -175,7 +178,7 @@ bool Config::save(const std::string& path) const {
 StreamDesc Config::tx_stream(const std::string& local_ip, const std::string& refclk) const {
     StreamDesc d;
     d.name = tx_name;
-    d.info = "2 channels: Left, Right";
+    d.info = channels == 1 ? "1 channel: Mono" : "2 channels: Left, Right";
     d.origin_addr = local_ip;
     d.source = local_ip;
     d.dest = tx_dest;
@@ -184,7 +187,7 @@ StreamDesc Config::tx_stream(const std::string& local_ip, const std::string& ref
     d.payload_type = tx_payload_type;
     d.encoding = tx_encoding;
     d.sample_rate = sample_rate;
-    d.channels = 2;
+    d.channels = channels == 1 ? 1 : 2;
     d.ptime_ms = tx_ptime_ms;
     d.framecount = 0;
     d.framecount = d.frames_per_packet();

@@ -28,7 +28,7 @@ bool Engine::start(const Config& cfg, int buffer_frames, AudioCallback* cb, std:
     net_init();
     iface_ = pick_interface(cfg.interface_ip);
     if (iface_.ipv4.empty() || iface_.ipv4 == "0.0.0.0") { err = "no usable network interface"; return false; }
-    LOG_I("engine start: iface %s (%s) rate %d buffer %d", iface_.ipv4.c_str(), iface_.name.c_str(), rate_, buffer_frames_);
+    LOG_I("engine start: iface %s (%s) rate %d buffer %d %s", iface_.ipv4.c_str(), iface_.name.c_str(), rate_, buffer_frames_, cfg.channels == 1 ? "mono" : "stereo");
 
     StreamDesc txd = cfg.tx_stream(iface_.ipv4, "");
     tx_fpp_ = txd.frames_per_packet();
@@ -193,6 +193,7 @@ void Engine::rx_thread() {
         if (frames <= 0 || frames > 512) { rx_bad_++; continue; }
         if (rx_ssrc_.load() != h.ssrc) { rx_ssrc_ = h.ssrc; std::lock_guard<std::mutex> g(off_mu_); off_valid_ = false; }
         pcm_unpack(enc, pl, frames, sch, rx_ch_off_, tmpp, kChannels);
+        if (sch == 1) memcpy(tmp[1], tmp[0], sizeof(int32_t) * frames);   // mono stream feeds both inputs
         for (int i = 0; i < frames; i++) {
             uint32_t ts = h.timestamp + (uint32_t)i;
             RxSlot& s = ring_[ts & kRingMask];
@@ -219,8 +220,9 @@ void Engine::engine_thread() {
     const int32_t* inp[kChannels] = {inbuf[0].data(), inbuf[1].data()};
     int32_t* outp[kChannels] = {outbuf[0].data(), outbuf[1].data()};
     std::vector<uint8_t> pkt(12 + 512 * kChannels * 3);
-    int32_t txtmp[kChannels][512];
+    int32_t txtmp[kChannels][512], txmono[512];
     const int32_t* txp[kChannels] = {txtmp[0], txtmp[1]};
+    const int32_t* txmp[1] = {txmono};
 
     const int64_t tick_ns = (int64_t)tick_frames * 1000000000LL / rate_;
     const int64_t spin = (int64_t)cfg_.spin_us * 1000;
@@ -278,8 +280,12 @@ void Engine::engine_thread() {
                     }
                     RtpHeader h; h.payload_type = (uint8_t)tx_desc_.payload_type; h.sequence = tx_seq_++; h.timestamp = tx_ts; h.ssrc = tx_ssrc_;
                     rtp_write_header(pkt.data(), h);
-                    pcm_pack(tx_desc_.encoding, txp, tx_fpp_, kChannels, pkt.data() + 12);
-                    tx_sock_.send_to(pkt.data(), 12 + tx_fpp_ * kChannels * encoding_bytes(tx_desc_.encoding), tx_desc_.dest, tx_desc_.port);
+                    int sch = tx_desc_.channels == 1 ? 1 : kChannels;
+                    if (sch == 1) {  // mono sum
+                        for (int i = 0; i < tx_fpp_; i++) txmono[i] = (txtmp[0][i] >> 1) + (txtmp[1][i] >> 1);
+                        pcm_pack(tx_desc_.encoding, txmp, tx_fpp_, 1, pkt.data() + 12);
+                    } else pcm_pack(tx_desc_.encoding, txp, tx_fpp_, kChannels, pkt.data() + 12);
+                    tx_sock_.send_to(pkt.data(), 12 + tx_fpp_ * sch * encoding_bytes(tx_desc_.encoding), tx_desc_.dest, tx_desc_.port);
                     tx_packets_++;
                 }
                 tx_ts += (uint32_t)tx_fpp_;
@@ -389,7 +395,7 @@ void Engine::housekeeping_thread() {
 
 bool Engine::apply_config(const Config& c) {
     if (c.sample_rate != cfg_.sample_rate || c.interface_ip != cfg_.interface_ip || c.buffer_frames != cfg_.buffer_frames ||
-        c.tx_ptime_ms != cfg_.tx_ptime_ms || c.spin_us != cfg_.spin_us) {
+        c.tx_ptime_ms != cfg_.tx_ptime_ms || c.spin_us != cfg_.spin_us || c.channels != cfg_.channels) {
         cfg_ = c;
         return false;  // needs restart
     }
