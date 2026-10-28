@@ -6,6 +6,10 @@
 #include "../core/status.h"
 #include "../core/log.h"
 #include "../core/platform.h"
+#ifdef _WIN32
+#  include "../asio/iasio.h"
+#  include <objbase.h>
+#endif
 #include <cstdio>
 #include <cstring>
 #include <cmath>
@@ -35,6 +39,7 @@ static void usage() {
         "  discover [seconds]        listen for SAP announcements (default 5 s)\n"
         "  run [seconds] [--tone|--loop|--silence]  run the engine headless (default: loop input to output)\n"
         "  selftest [seconds]        send a tone to the TX group and receive it back; reports PASS/FAIL\n"
+        "  check                     (Windows) verify the ASIO driver registration and load it\n"
         "  config-path               print the configuration file path\n"
         "  reset-config              restore default configuration\n"
         "\nSettings (section.key): general.interface general.sample_rate general.buffer_frames general.link_offset_ms\n"
@@ -200,10 +205,75 @@ static int cmd_run(Config c, int seconds, CliHost::Mode mode, bool selftest) {
     return 0;
 }
 
+#ifdef _WIN32
+static std::string reg_read(HKEY root, const char* path, const char* name) {
+    HKEY k; char buf[1024]; DWORD len = sizeof buf, type = 0;
+    if (RegOpenKeyExA(root, path, 0, KEY_READ | KEY_WOW64_64KEY, &k) != ERROR_SUCCESS) return "";
+    LONG r = RegQueryValueExA(k, name, nullptr, &type, (BYTE*)buf, &len);
+    RegCloseKey(k);
+    if (r != ERROR_SUCCESS) return "";
+    buf[len < sizeof buf ? len : sizeof buf - 1] = 0;
+    return buf;
+}
+
+// Verifies what an ASIO host will see: registry entries, DLL path, COM creation and init().
+static int cmd_check() {
+    const char* kName = "AES67 Virtual Sound Card";
+    int problems = 0;
+    printf("ASIO drivers registered on this PC (HKLM\\SOFTWARE\\ASIO):\n");
+    HKEY k;
+    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\ASIO", 0, KEY_READ | KEY_WOW64_64KEY, &k) == ERROR_SUCCESS) {
+        char sub[256]; DWORD i = 0, n = sizeof sub;
+        while (RegEnumKeyExA(k, i++, sub, &n, nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS) { printf("  - %s\n", sub); n = sizeof sub; }
+        RegCloseKey(k);
+    } else { printf("  (none)\n"); }
+    std::string clsid = reg_read(HKEY_LOCAL_MACHINE, (std::string("SOFTWARE\\ASIO\\") + kName).c_str(), "CLSID");
+    if (clsid.empty()) {
+        printf("\nNOT REGISTERED: no entry for \"%s\". Run install.bat from the folder containing aes67asio.dll.\n", kName);
+        return 1;
+    }
+    printf("\nRegistered as %s\n", clsid.c_str());
+    std::string dll = reg_read(HKEY_CLASSES_ROOT, ("CLSID\\" + clsid + "\\InprocServer32").c_str(), nullptr);
+    printf("Driver DLL : %s\n", dll.c_str());
+    if (dll.empty()) { printf("PROBLEM: COM class is missing. Re-run install.bat.\n"); return 1; }
+    if (GetFileAttributesA(dll.c_str()) == INVALID_FILE_ATTRIBUTES) { printf("PROBLEM: that file no longer exists (folder moved or deleted?). Re-run install.bat from the new location.\n"); return 1; }
+    HMODULE m = LoadLibraryA(dll.c_str());
+    if (!m) { printf("PROBLEM: the DLL cannot be loaded (error %lu). If you downloaded it, right-click > Properties > Unblock.\n", GetLastError()); return 1; }
+    FreeLibrary(m);
+    CoInitialize(nullptr);
+    CLSID id; std::wstring w(clsid.begin(), clsid.end());
+    if (FAILED(CLSIDFromString(w.c_str(), &id))) { printf("PROBLEM: bad CLSID string\n"); return 1; }
+    IASIO* drv = nullptr;
+    HRESULT hr = CoCreateInstance(id, nullptr, CLSCTX_INPROC_SERVER, id, (void**)&drv);
+    if (FAILED(hr) || !drv) { printf("PROBLEM: CoCreateInstance failed (0x%08lx). Re-run install.bat.\n", (unsigned long)hr); return 1; }
+    char name[64] = {0}; drv->getDriverName(name);
+    printf("Loaded     : \"%s\" version %ld\n", name, drv->getDriverVersion());
+    if (drv->init(nullptr) != ASIOTrue) { char e[128] = {0}; drv->getErrorMessage(e); printf("PROBLEM: init failed: %s\n", e); problems++; }
+    else {
+        long in = 0, out = 0; drv->getChannels(&in, &out);
+        double sr = 0; drv->getSampleRate(&sr);
+        long mn, mx, pref, gran; drv->getBufferSize(&mn, &mx, &pref, &gran);
+        printf("Channels   : %ld in / %ld out, %.0f Hz, buffer %ld (%ld-%ld)\n", in, out, sr, pref, mn, mx);
+    }
+    drv->Release();
+    CoUninitialize();
+    printf("\n%s\nThis is an ASIO device: select it inside your audio application (ASIO driver list),\n"
+           "it does not appear in Windows Sound settings.\n", problems ? "Driver registered but not working, see above." : "OK - the driver is installed and loads correctly.");
+    return problems ? 1 : 0;
+}
+#endif
+
 int main(int argc, char** argv) {
     if (argc < 2) { usage(); return 1; }
     std::string cmd = argv[1];
     Config c; c.load();
+    if (cmd == "check") {
+#ifdef _WIN32
+        return cmd_check();
+#else
+        printf("check is only available on Windows\n"); return 1;
+#endif
+    }
     if (cmd == "config-path") { printf("%s\n", Config::default_path().c_str()); return 0; }
     if (cmd == "reset-config") { Config d; return d.save() ? 0 : 2; }
     if (cmd == "interfaces") {
