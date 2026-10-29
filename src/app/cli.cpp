@@ -283,7 +283,7 @@ int main(int argc, char** argv) {
     if (cmd == "config-path") { printf("%s\n", Config::default_path().c_str()); return 0; }
     if (cmd == "reset-config") { Config d; return d.save() ? 0 : 2; }
     if (cmd == "interfaces") {
-        for (auto& i : list_interfaces()) printf("%-16s %s%s\n", i.ipv4.c_str(), i.name.c_str(), i.ipv4 == pick_interface(c.interface_ip).ipv4 ? "   (selected)" : "");
+        for (auto& i : list_interfaces()) printf("%-16s %-12s %s%s\n", i.ipv4.c_str(), i.kind_name(), i.name.c_str(), i.ipv4 == pick_interface(c.interface_ip).ipv4 ? "   (selected)" : "");
         return 0;
     }
     if (cmd == "parse" || cmd == "import") {

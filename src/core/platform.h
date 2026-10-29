@@ -48,6 +48,8 @@ struct NetInterface {
     std::string ipv4;     // dotted quad
     uint8_t     mac[6] = {0};
     bool        has_mac = false;
+    enum Kind { Unknown = 0, Ethernet = 1, WiFi = 2, Virtual = 3 } kind = Unknown;   // Virtual = VPN / tunnel / hypervisor adapter
+    const char* kind_name() const { return kind == Ethernet ? "Ethernet" : kind == WiFi ? "Wi-Fi" : kind == Virtual ? "VPN/virtual" : "other"; }
 };
 std::vector<NetInterface> list_interfaces();
 // Resolve the interface config string ("", "auto", "192.168.1.10" or an interface name) to an IPv4 string.

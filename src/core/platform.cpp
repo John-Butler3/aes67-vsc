@@ -170,9 +170,18 @@ std::vector<NetInterface> list_interfaces() {
         for (auto* u = a->FirstUnicastAddress; u; u = u->Next) {
             if (u->Address.lpSockaddr->sa_family != AF_INET) continue;
             NetInterface ni;
-            char name[256] = {0};
+            char name[256] = {0}, desc[256] = {0};
             WideCharToMultiByte(CP_UTF8, 0, a->FriendlyName, -1, name, sizeof name, nullptr, nullptr);
+            WideCharToMultiByte(CP_UTF8, 0, a->Description, -1, desc, sizeof desc, nullptr, nullptr);
             ni.name = name;
+            {
+                std::string d = std::string(name) + " " + desc;
+                for (auto& ch : d) ch = (char)tolower((unsigned char)ch);
+                const char* virt[] = {"vpn", "forti", "tap-", "tap ", "tun", "wireguard", "tailscale", "zerotier", "openvpn", "cisco anyconnect", "pulse", "globalprotect", "hyper-v", "vmware", "virtualbox", "vethernet", "bluetooth", "loopback", "npcap", "teredo", "isatap", nullptr};
+                bool v = a->IfType == IF_TYPE_TUNNEL || a->IfType == IF_TYPE_PPP || a->IfType == IF_TYPE_PROP_VIRTUAL;
+                for (int i = 0; virt[i] && !v; i++) if (d.find(virt[i]) != std::string::npos) v = true;
+                ni.kind = v ? NetInterface::Virtual : a->IfType == IF_TYPE_IEEE80211 ? NetInterface::WiFi : a->IfType == IF_TYPE_ETHERNET_CSMACD ? NetInterface::Ethernet : NetInterface::Unknown;
+            }
             char ip[64] = {0};
             inet_ntop(AF_INET, &((sockaddr_in*)u->Address.lpSockaddr)->sin_addr, ip, sizeof ip);
             ni.ipv4 = ip;
@@ -188,6 +197,12 @@ std::vector<NetInterface> list_interfaces() {
         if (!(p->ifa_flags & IFF_UP) || (p->ifa_flags & IFF_LOOPBACK)) continue;
         NetInterface ni;
         ni.name = p->ifa_name;
+        {
+            std::string nm = ni.name;
+            if (nm.rfind("tun", 0) == 0 || nm.rfind("tap", 0) == 0 || nm.rfind("wg", 0) == 0 || nm.rfind("docker", 0) == 0 || nm.rfind("br-", 0) == 0 || nm.rfind("veth", 0) == 0 || nm.rfind("virbr", 0) == 0) ni.kind = NetInterface::Virtual;
+            else if (nm.rfind("wl", 0) == 0) ni.kind = NetInterface::WiFi;
+            else if (nm.rfind("en", 0) == 0 || nm.rfind("eth", 0) == 0) ni.kind = NetInterface::Ethernet;
+        }
         char ip[64] = {0};
         inet_ntop(AF_INET, &((sockaddr_in*)p->ifa_addr)->sin_addr, ip, sizeof ip);
         ni.ipv4 = ip;
@@ -214,9 +229,16 @@ NetInterface pick_interface(const std::string& wanted) {
         // Not found: use the literal IP anyway so the user sees the real socket error.
         NetInterface ni; ni.ipv4 = wanted; ni.name = wanted; return ni;
     }
-    // Prefer a private LAN address that is not link-local.
-    for (auto& i : all) if (i.ipv4.rfind("169.254.", 0) != 0) return i;
-    if (!all.empty()) return all[0];
+    // Automatic: wired Ethernet first, then Wi-Fi, then anything else; VPN/tunnel/virtual adapters last.
+    // Link-local (169.254.x.x) addresses are avoided when a real address exists.
+    auto score = [](const NetInterface& i) {
+        int s = i.kind == NetInterface::Ethernet ? 0 : i.kind == NetInterface::WiFi ? 1 : i.kind == NetInterface::Unknown ? 2 : 3;
+        if (i.ipv4.rfind("169.254.", 0) == 0) s += 10;
+        return s;
+    };
+    const NetInterface* best = nullptr;
+    for (auto& i : all) if (!best || score(i) < score(*best)) best = &i;
+    if (best) return *best;
     NetInterface ni; ni.ipv4 = "0.0.0.0"; ni.name = "none"; return ni;
 }
 

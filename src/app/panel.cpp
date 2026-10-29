@@ -225,7 +225,7 @@ static void load_to_ui() {
     g_loading = true;
     std::vector<std::string> names{"Automatic"}; int sel = 0;
     for (size_t i = 0; i < g_ifaces.size(); i++) {
-        names.push_back(g_ifaces[i].ipv4 + "  (" + g_ifaces[i].name + ")");
+        names.push_back(g_ifaces[i].ipv4 + "  " + g_ifaces[i].name + "  [" + g_ifaces[i].kind_name() + "]");
         if (g_cfg.interface_ip != "auto" && g_ifaces[i].ipv4 == g_cfg.interface_ip) sel = (int)i + 1;
     }
     combo_fill(IDC_IFACE, names, sel);

@@ -189,6 +189,19 @@ programme audio rather than speech.
   energy-saving options on the NIC) or a non-PTP-aware network path. The driver only reports
   "locked" after the error has stayed small for a second and only drops it after three bad
   seconds, so an occasional noisy timestamp does not show as a sync loss.
+* **VPNs, FortiGate and other routers.** AES67 relies on multicast: PTP (224.0.1.129), SAP
+  (239.255.255.255) and the audio groups. Multicast does not pass through VPN tunnels
+  (FortiClient SSL VPN, IPsec, WireGuard, ...) and is not routed between subnets by a
+  FortiGate or any router unless multicast routing (PIM) and multicast policies are set up
+  for it. The PC therefore has to sit on the same LAN/VLAN as the AES67 devices, on a
+  physical network adapter; the Windows Firewall rule added by install.bat only matters once
+  packets actually reach the PC. A FortiClient full tunnel with "local LAN access" disabled
+  also blocks the PC's own LAN while the VPN is connected, which silently removes every AES67
+  device. The automatic interface choice now prefers wired Ethernet and avoids VPN/virtual
+  adapters, the Settings list labels each adapter (Ethernet, Wi-Fi, VPN/virtual), and the
+  status view warns when a VPN/virtual adapter is in use. For a genuinely remote device the
+  only workable path is unicast audio from a sender that supports it (Ravenna does, Dante
+  does not) with the clock free-running; PTP cannot be carried over a VPN.
 * **"No PTP master found" although one is running.** Open the Status page: the clock row
   now lists what PTP traffic is actually seen on the chosen interface. Typical findings:
   *PTPv1 (Dante native)* means the Dante device is not in AES67 mode (enable it in Dante

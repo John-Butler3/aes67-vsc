@@ -28,7 +28,11 @@ bool Engine::start(const Config& cfg, int buffer_frames, AudioCallback* cb, std:
     net_init();
     iface_ = pick_interface(cfg.interface_ip);
     if (iface_.ipv4.empty() || iface_.ipv4 == "0.0.0.0") { err = "no usable network interface"; return false; }
-    LOG_I("engine start: iface %s (%s) rate %d buffer %d %s", iface_.ipv4.c_str(), iface_.name.c_str(), rate_, buffer_frames_, cfg.channels == 1 ? "mono" : "stereo");
+    LOG_I("engine start: iface %s (%s, %s) rate %d buffer %d %s", iface_.ipv4.c_str(), iface_.name.c_str(), iface_.kind_name(), rate_, buffer_frames_, cfg.channels == 1 ? "mono" : "stereo");
+    if (iface_.kind == NetInterface::Virtual) {
+        LOG_W("interface %s looks like a VPN/virtual adapter; multicast (PTP, SAP, audio) does not cross VPN tunnels", iface_.name.c_str());
+        message_ = "Interface \"" + iface_.name + "\" is a VPN/virtual adapter: multicast (PTP, audio) does not travel through VPN tunnels. Pick the LAN adapter in Settings.";
+    }
 
     StreamDesc txd = cfg.tx_stream(iface_.ipv4, "");
     tx_fpp_ = txd.frames_per_packet();
