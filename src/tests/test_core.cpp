@@ -192,6 +192,17 @@ static void test_servo() {
     CHECK(worst2 < 80000);
     if (worst2 >= 80000) fprintf(stderr, "servo with outliers: error %lld ns\n", (long long)worst2);
     CHECK(c2.jitter_ns() < 100000);
+    // 1 Hz sync with noise: every sample must be applied (no starving) and the error stay small.
+    PtpClock c3; c3.servo_reset(); int64_t worst3 = 0;
+    for (int i = 0; i < 600; i++) {
+        int64_t mono = m0 + (int64_t)i * 1000000000LL;
+        seed = seed * 1664525u + 1013904223u;
+        int64_t noise = (int64_t)(seed % 200001) - 100000;
+        c3.servo_update(master_at(mono) + noise, mono);
+        if (i >= 400) { int64_t probe = mono + 500000000LL; worst3 = std::max(worst3, (int64_t)std::llabs(c3.mono_to_ptp(probe) - master_at(probe))); }
+    }
+    CHECK(worst3 < 300000);
+    if (worst3 >= 300000) fprintf(stderr, "servo at 1 Hz: error %lld ns\n", (long long)worst3);
     // inverse mapping consistency
     int64_t x = mono_ns() + 123456789;
     CHECK(std::llabs(c.ptp_to_mono(c.mono_to_ptp(x)) - x) <= 1);

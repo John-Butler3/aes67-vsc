@@ -90,6 +90,9 @@ static bool apply_setting(Config& c, const std::string& kv, std::string& err) {
     else if (key == "ptp.mode") c.ptp_mode = ptp_mode_from_name(v);
     else if (key == "ptp.domain") c.ptp_domain = I();
     else if (key == "ptp.priority1") c.ptp_priority1 = I();
+    else if (key == "ptp.stack_timestamps") c.ptp_stack_timestamps = B();
+    else if (key == "ptp.sync_log_interval") c.ptp_sync_log_interval = I();
+    else if (key == "ptp.announce_log_interval") c.ptp_announce_log_interval = I();
     else if (key == "rx.enabled") c.rx_enabled = B();
     else if (key == "rx.dest") { c.rx.dest = v; if (!v.empty()) c.rx_enabled = true; }
     else if (key == "rx.source") c.rx.source = v;

@@ -26,6 +26,7 @@ struct PtpParams {
     uint16_t event_port = 319;       // general port = event_port + 1 (overridable for tests)
     int ttl = 1;
     double listen_seconds = 4.0;     // auto mode: how long to wait for a foreign master before becoming master
+    bool stack_timestamps = false;   // Windows SIO_TIMESTAMPING (opt-in); Linux kernel timestamps are always used
 };
 
 enum class PtpState : uint32_t { Off = 0, Listening = 1, Locked = 2, Master = 3, FreeRunning = 4 };

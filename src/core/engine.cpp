@@ -69,6 +69,7 @@ bool Engine::start_ptp(std::string& err) {
     PtpParams p;
     p.iface_ip = iface_.ipv4; p.domain = cfg_.ptp_domain; p.mode = cfg_.ptp_mode;
     p.priority1 = cfg_.ptp_priority1; p.sync_log_interval = cfg_.ptp_sync_log_interval; p.announce_log_interval = cfg_.ptp_announce_log_interval;
+    p.stack_timestamps = cfg_.ptp_stack_timestamps;
     memcpy(p.mac, iface_.mac, 6); p.has_mac = iface_.has_mac;
     // Test hooks: alternate port pair, and a random clock identity so two instances on one host differ.
     const char* e = getenv("AES67VSC_PTP_PORT"); if (e && atoi(e) > 0) p.event_port = (uint16_t)atoi(e);
@@ -134,7 +135,9 @@ bool Engine::start_rx(std::string& err) {
             err = "join " + rx_desc_.dest + ": " + net_error_string(net_last_error()); return false;
         }
     }
+#ifndef _WIN32
     rx_sock_.set_timestamping(true);
+#endif
     rx_running_ = true;
     rx_thread_ = std::thread([this] { rx_thread(); });
     LOG_I("RX: %s (%s)", rx_desc_.summary().c_str(), rx_desc_.name.c_str());
@@ -405,7 +408,8 @@ bool Engine::apply_config(const Config& c) {
     bool tx_changed = c.tx_enabled != cfg_.tx_enabled || c.tx_dest != cfg_.tx_dest || c.tx_port != cfg_.tx_port || c.tx_payload_type != cfg_.tx_payload_type ||
         c.tx_encoding != cfg_.tx_encoding || c.tx_ttl != cfg_.tx_ttl || c.tx_dscp != cfg_.tx_dscp || c.tx_name != cfg_.tx_name;
     bool ptp_changed = c.ptp_mode != cfg_.ptp_mode || c.ptp_domain != cfg_.ptp_domain || c.ptp_priority1 != cfg_.ptp_priority1 ||
-        c.ptp_sync_log_interval != cfg_.ptp_sync_log_interval || c.ptp_announce_log_interval != cfg_.ptp_announce_log_interval;
+        c.ptp_sync_log_interval != cfg_.ptp_sync_log_interval || c.ptp_announce_log_interval != cfg_.ptp_announce_log_interval ||
+        c.ptp_stack_timestamps != cfg_.ptp_stack_timestamps;
     bool tx_enable_flip = c.tx_enabled != cfg_.tx_enabled;
     cfg_ = c;
     log_set_level((LogLevel)std::clamp(c.log_level, 0, 3));

@@ -158,9 +158,10 @@ programme audio rather than speech.
 * Latency: input = buffer + link offset; output = buffer + 1 packet (+ the receiver's own
   link offset).
 * PTP: end-to-end delay mechanism, multicast 224.0.1.129, two-step and one-step masters.
-  Receive timestamps come from the network stack where the OS offers them (Linux
-  SO_TIMESTAMPNS, Windows 10 2004+ SIO_TIMESTAMPING), otherwise from user mode; the status
-  view says which. A min-delay prefilter and an outlier gate feed a PI servo; lock is
+  Receive timestamps come from the kernel on Linux (SO_TIMESTAMPNS) and from user mode on
+  Windows; Windows network-stack timestamps (SIO_TIMESTAMPING, Windows 10 2004+) can be
+  switched on with `aes67vsc set ptp.stack_timestamps=1` and are still experimental. The
+  status view says which source is in use. A min-delay prefilter and an outlier gate feed a PI servo; lock is
   declared after one second of small error and dropped only after three bad seconds. Default
   profile and AES67 media profile intervals are both accepted. In *Automatic* mode the driver
   follows any grandmaster it sees, including devices that send Sync without Announce, and

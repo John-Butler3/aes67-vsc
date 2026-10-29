@@ -27,6 +27,7 @@ struct Config {
     int ptp_priority1 = 200;             // when acting as master; real devices (128) win
     int ptp_sync_log_interval = -3;      // master: 8 syncs/s (AES67 media profile)
     int ptp_announce_log_interval = 1;   // master: every 2 s
+    bool ptp_stack_timestamps = false;   // Windows: use SIO_TIMESTAMPING receive stamps (experimental); Linux always uses kernel stamps
 
     // [rx]
     bool rx_enabled = true;

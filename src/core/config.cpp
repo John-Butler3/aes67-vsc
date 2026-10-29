@@ -52,6 +52,7 @@ std::string Config::to_ini() const {
     o << "priority1=" << ptp_priority1 << "\n";
     o << "sync_log_interval=" << ptp_sync_log_interval << "\n";
     o << "announce_log_interval=" << ptp_announce_log_interval << "\n";
+    o << "stack_timestamps=" << (ptp_stack_timestamps ? 1 : 0) << "\n";
     o << "\n[rx]\n";
     o << "enabled=" << (rx_enabled ? 1 : 0) << "\n";
     o << "name=" << esc(rx.name) << "\n";
@@ -113,6 +114,7 @@ bool Config::from_ini(const std::string& text, std::string& err) {
             else if (k == "priority1") c.ptp_priority1 = I();
             else if (k == "sync_log_interval") c.ptp_sync_log_interval = I();
             else if (k == "announce_log_interval") c.ptp_announce_log_interval = I();
+            else if (k == "stack_timestamps") c.ptp_stack_timestamps = I() != 0;
         } else if (sect == "rx") {
             if (k == "enabled") c.rx_enabled = I() != 0;
             else if (k == "name") c.rx.name = unesc(v);

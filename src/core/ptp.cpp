@@ -71,7 +71,11 @@ bool PtpClock::start(const PtpParams& p, std::string& err) {
         s.set_multicast_loop(true);
         s.set_tos(46 << 2);
         s.set_recv_buffer(256 * 1024);
+#ifdef _WIN32
+        if (p.stack_timestamps) s.set_timestamping(true);
+#else
         s.set_timestamping(true);
+#endif
         return true;
     };
     if (!open(ev_, p.event_port) || !open(gen_, (uint16_t)(p.event_port + 1))) { ev_.close(); gen_.close(); return false; }
@@ -152,8 +156,14 @@ void PtpClock::servo_update(int64_t master_ns, int64_t local_mono) {
     // use a new sample only if it is at least as good as the window, otherwise wait (at most 8 samples).
     ewin_[ewin_i_] = e; ewin_i_ = (ewin_i_ + 1) % 8; if (ewin_n_ < 8) ewin_n_++;
     int64_t best = ewin_[0]; for (int i = 1; i < ewin_n_; i++) best = std::max(best, ewin_[i]);
-    if (ewin_n_ >= 4 && e < best - 20000 && since_best_ < 8) { since_best_++; return; }
-    if (e < best) e = best;     // after 8 skips, apply the best of the window instead
+    bool recent = last_servo_mono_ && (local_mono - last_servo_mono_) < 1000000000LL;   // applied something within the last second
+    if (ewin_n_ >= 4 && e < best - 20000 && since_best_ < 8 && recent) {
+        // Skip this (more delayed) sample, but it still proves the clock is tracking.
+        since_best_++;
+        if (jitter_ema_ > 0 && ae < std::max(4.0 * jitter_ema_, 250000.0)) { if (!first_good_mono_) first_good_mono_ = local_mono; last_good_mono_ = local_mono; }
+        return;
+    }
+    if (e < best && recent) e = best;     // apply the best of the window instead of a delayed sample
     since_best_ = 0;
     ae = (double)std::llabs(e);
     jitter_ema_ = jitter_ema_ > 0 ? jitter_ema_ * 0.9 + ae * 0.1 : ae;
