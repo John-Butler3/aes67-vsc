@@ -15,6 +15,7 @@
 #include <cmath>
 #include <string>
 #include <vector>
+#include <map>
 #include <iostream>
 #include <csignal>
 #include <atomic>
@@ -40,6 +41,7 @@ static void usage() {
         "  run [seconds] [--tone|--loop|--silence]  run the engine headless (default: loop input to output)\n"
         "  selftest [seconds]        send a tone to the TX group and receive it back; reports PASS/FAIL\n"
         "  check                     (Windows) verify the ASIO driver registration and load it\n"
+        "  ptp-scan [seconds]        listen on UDP 319/320 and list every PTP talker (stop driver/bridge first)\n"
         "  config-path               print the configuration file path\n"
         "  reset-config              restore default configuration\n"
         "\nSettings (section.key): general.interface general.sample_rate general.buffer_frames general.link_offset_ms\n"
@@ -339,6 +341,52 @@ int main(int argc, char** argv) {
         for (auto& x : e) {
             printf("from %s:\n", x.origin_ip.c_str());
             if (x.parsed) print_desc(x.desc); else printf("  (unparseable SDP)\n");
+        }
+        return 0;
+    }
+    if (cmd == "ptp-scan") {
+        int secs = argc >= 3 ? atoi(argv[2]) : 10;
+        std::string ip = pick_interface(c.interface_ip).ipv4;
+        UdpSocket ev, gen; std::string err;
+        uint16_t port = 319; const char* pe = getenv("AES67VSC_PTP_PORT"); if (pe && atoi(pe) > 0) port = (uint16_t)atoi(pe);
+        std::pair<UdpSocket*, uint16_t> socks[2] = {{&ev, port}, {&gen, (uint16_t)(port + 1)}};
+        for (auto& pr : socks) {
+            UdpSocket& so = *pr.first;
+            if (!so.open()) { fprintf(stderr, "socket: %s\n", net_error_string(net_last_error()).c_str()); return 2; }
+            so.set_reuse_addr(true);
+            if (!so.bind_any(pr.second)) { fprintf(stderr, "cannot bind UDP %u: %s (is the driver or bridge running? stop it first)\n", pr.second, net_error_string(net_last_error()).c_str()); return 2; }
+            if (!so.join_multicast("224.0.1.129", ip)) { fprintf(stderr, "cannot join 224.0.1.129 on %s: %s\n", ip.c_str(), net_error_string(net_last_error()).c_str()); return 2; }
+            so.set_recv_timeout_ms(200);
+        }
+        printf("listening for PTP on %s (UDP %u/%u) for %d s ...\n", ip.c_str(), port, port + 1, secs);
+        struct Talker { int ver = 0, dom = 0; uint32_t pkts = 0; std::map<int, int> types; int prio1 = -1, cls = -1; std::string id; };
+        std::map<std::string, Talker> talkers;
+        int64_t t0 = mono_ns(); uint8_t buf[512];
+        while (mono_ns() - t0 < (int64_t)secs * 1000000000LL) {
+            for (UdpSocket* so : {&ev, &gen}) {
+                std::string from; uint16_t fp; int64_t rx;
+                int n = so->recv(buf, sizeof buf, &from, &fp, &rx);
+                if (n < 34) continue;
+                Talker& t = talkers[from];
+                t.ver = buf[1] & 0x0F; t.pkts++;
+                if (t.ver == 2) {
+                    t.dom = buf[4]; int type = buf[0] & 0x0F; t.types[type]++;
+                    t.id = ptp_identity_string(buf + 20);
+                    if (type == 0xB && n >= 64) { t.prio1 = buf[34 + 13]; t.cls = buf[34 + 14]; }
+                } else t.types[-1]++;
+            }
+        }
+        if (talkers.empty()) { printf("no PTP packets seen. Check: right interface? firewall allows UDP 319/320 in? switch forwards multicast 224.0.1.129? master really on this VLAN?\n"); return 1; }
+        for (auto& kv : talkers) {
+            const Talker& t = kv.second;
+            if (t.ver == 1) { printf("%-16s PTPv1 (Dante native) %u packets - not usable for AES67; enable AES67 mode on the device\n", kv.first.c_str(), t.pkts); continue; }
+            std::string types;
+            for (auto& ty : t.types) { const char* nm = ty.first == 0 ? "Sync" : ty.first == 1 ? "DelayReq" : ty.first == 8 ? "FollowUp" : ty.first == 9 ? "DelayResp" : ty.first == 0xB ? "Announce" : "other"; types += std::string(nm) + "x" + std::to_string(ty.second) + " "; }
+            printf("%-16s PTPv2 domain %d  %s  %u packets  %s", kv.first.c_str(), t.dom, t.id.c_str(), t.pkts, types.c_str());
+            if (t.prio1 >= 0) printf(" prio1 %d class %d", t.prio1, t.cls);
+            if (t.dom != c.ptp_domain) printf("   <-- not our domain (%d): set ptp.domain=%d", c.ptp_domain, t.dom);
+            else if (t.types.count(0) && !t.types.count(0xB)) printf("   (Sync without Announce; followed after 3 s)");
+            printf("\n");
         }
         return 0;
     }

@@ -447,8 +447,14 @@ StatusBlock Engine::snapshot() const {
     s.late_periods = late_periods_.load();
     snprintf(s.local_ip, sizeof s.local_ip, "%s", iface_.ipv4.c_str());
     { std::lock_guard<std::mutex> g(const_cast<std::mutex&>(status_mu_)); snprintf(s.message, sizeof s.message, "%s", message_.c_str()); }
-    if (!s.message[0] && s.ptp_state != 0)
-        snprintf(s.message, sizeof s.message, "PTP: %s timestamps, %u syncs, %u outliers rejected", ptp_.stack_timestamps() ? "network-stack" : "user-mode", ptp_.sync_count(), ptp_.outlier_count());
+    if (!s.message[0] && s.ptp_state != 0) {
+        if (s.ptp_state == 1 || s.ptp_state == 4) {
+            std::string seen = ptp_.seen_summary();
+            if (seen.empty()) snprintf(s.message, sizeof s.message, "PTP: no PTP packets at all on %s - check interface, firewall (UDP 319/320) and switch multicast", iface_.ipv4.c_str());
+            else snprintf(s.message, sizeof s.message, "PTP: no master on domain %d; seen: %s", cfg_.ptp_domain, seen.c_str());
+        } else
+            snprintf(s.message, sizeof s.message, "PTP: %s timestamps, %u syncs, %u outliers rejected", ptp_.stack_timestamps() ? "network-stack" : "user-mode", ptp_.sync_count(), ptp_.outlier_count());
+    }
     return s;
 }
 void Engine::publish_status() {

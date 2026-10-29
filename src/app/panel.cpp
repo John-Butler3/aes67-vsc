@@ -502,8 +502,8 @@ static void refresh_status() {
         switch (eng.ptp_state) {
         case 2: snprintf(b, sizeof b, "locked to %s   offset %+.1f us, jitter %.0f us", eng.ptp_master, eng.ptp_offset_ns / 1000.0, eng.ptp_jitter_ns / 1000.0); set_dot(IDC_DOT_CLK, C_GREEN); break;
         case 3: snprintf(b, sizeof b, "this PC is the PTP master (%s) - other devices follow it", eng.ptp_master); set_dot(IDC_DOT_CLK, C_GREEN); break;
-        case 4: snprintf(b, sizeof b, "free-running - no PTP master found on the network"); set_dot(IDC_DOT_CLK, C_YELLOW); break;
-        case 1: snprintf(b, sizeof b, "searching / not yet locked   (jitter %.0f us)", eng.ptp_jitter_ns / 1000.0); set_dot(IDC_DOT_CLK, C_YELLOW); break;
+        case 4: snprintf(b, sizeof b, "free-running - no PTP master found on the network\n%s", eng.message); set_dot(IDC_DOT_CLK, C_YELLOW); break;
+        case 1: snprintf(b, sizeof b, "searching / not yet locked   (jitter %.0f us)\n%s", eng.ptp_jitter_ns / 1000.0, eng.message); set_dot(IDC_DOT_CLK, C_YELLOW); break;
         default: snprintf(b, sizeof b, "PTP off - timestamps from the PC clock"); set_dot(IDC_DOT_CLK, C_GREY); break;
         }
         set_text(IDC_VAL_CLK, b);

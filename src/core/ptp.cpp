@@ -57,6 +57,7 @@ bool PtpClock::start(const PtpParams& p, std::string& err) {
 
     servo_reset();
     start_mono_ = mono_ns();
+    last_diag_log_mono_ = start_mono_; last_rejoin_mono_ = start_mono_; last_any_rx_mono_ = 0; seen_.clear();
     is_master_ = false; have_master_ = false; foreign_.clear();
     if (p.mode == PtpMode::Off) { set_state(PtpState::Off); return true; }
 
@@ -215,8 +216,48 @@ void PtpClock::thread_main() {
         int64_t now = mono_ns();
         select_master(now);
         if (is_master_) master_tick(now); else slave_tick(now);
+        // No PTP traffic at all for 10 s (and none from us as master): re-join the multicast group in case
+        // the switch forgot the membership, and say what we see for the log.
+        bool quiet; { std::lock_guard<std::mutex> g(mu_); quiet = (now - std::max(last_any_rx_mono_, start_mono_) > 10000000000LL); }
+        if (!is_master_ && quiet && now - last_rejoin_mono_ > 10000000000LL) {
+            last_rejoin_mono_ = now;
+            for (UdpSocket* s : {&ev_, &gen_}) { s->leave_multicast(kPtpGroup, p_.iface_ip); s->join_multicast(kPtpGroup, p_.iface_ip); }
+            LOG_W("PTP: no packets for 10 s on %s; re-joined %s", p_.iface_ip.c_str(), kPtpGroup);
+        }
+        if (!is_master_ && !have_master_ && now - last_diag_log_mono_ > 10000000000LL) {
+            last_diag_log_mono_ = now;
+            std::string seen = seen_summary();
+            LOG_W("PTP: no master on domain %d yet; traffic seen: %s", p_.domain, seen.empty() ? "none" : seen.c_str());
+        }
     }
 }
+
+void PtpClock::note_seen(const uint8_t* b, int n, int64_t rx_mono, const std::string& from) {
+    if (n < 34) return;
+    int ver = b[1] & 0x0F;
+    if (ver != 1 && ver != 2) return;
+    int dom = ver == 2 ? b[4] : 0;
+    std::lock_guard<std::mutex> g(mu_);
+    Seen& s = seen_[ver * 256 + dom];
+    s.packets++; s.last_mono = rx_mono;
+    if (s.sources.size() < 16) s.sources[from]++;
+    last_any_rx_mono_ = rx_mono;
+}
+std::string PtpClock::seen_summary() const {
+    std::lock_guard<std::mutex> g(mu_);
+    std::string out; int64_t now = mono_ns();
+    for (auto& kv : seen_) {
+        if (now - kv.second.last_mono > 30000000000LL) continue;
+        int ver = kv.first / 256, dom = kv.first % 256;
+        if (!out.empty()) out += "; ";
+        char b[160];
+        if (ver == 1) snprintf(b, sizeof b, "PTPv1 (Dante native, not AES67) from %zu device(s)", kv.second.sources.size());
+        else snprintf(b, sizeof b, "PTPv2 domain %d from %zu device(s)%s", dom, kv.second.sources.size(), dom == p_.domain ? "" : " (not our domain)");
+        out += b;
+    }
+    return out;
+}
+bool PtpClock::anything_seen() const { std::lock_guard<std::mutex> g(mu_); return last_any_rx_mono_ && mono_ns() - last_any_rx_mono_ < 30000000000LL; }
 
 static bool hdr_ok(const uint8_t* b, int n, int domain) {
     if (n < kHdr) return false;
@@ -225,7 +266,8 @@ static bool hdr_ok(const uint8_t* b, int n, int domain) {
     return true;
 }
 
-void PtpClock::handle_event(const uint8_t* b, int n, int64_t rx_mono, const std::string&) {
+void PtpClock::handle_event(const uint8_t* b, int n, int64_t rx_mono, const std::string& from) {
+    note_seen(b, n, rx_mono, from);
     if (!hdr_ok(b, n, p_.domain)) return;
     if (memcmp(b + 20, own_port_id_.data(), 10) == 0) return;  // our own
     uint8_t type = b[0] & 0x0F;
@@ -253,7 +295,8 @@ void PtpClock::handle_event(const uint8_t* b, int n, int64_t rx_mono, const std:
     }
 }
 
-void PtpClock::handle_general(const uint8_t* b, int n, int64_t rx_mono, const std::string&) {
+void PtpClock::handle_general(const uint8_t* b, int n, int64_t rx_mono, const std::string& from) {
+    note_seen(b, n, rx_mono, from);
     if (!hdr_ok(b, n, p_.domain)) return;
     if (memcmp(b + 20, own_port_id_.data(), 10) == 0) return;
     uint8_t type = b[0] & 0x0F;

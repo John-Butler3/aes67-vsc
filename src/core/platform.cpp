@@ -399,6 +399,17 @@ int UdpSocket::recv(void* buf, int len, std::string* from_ip, uint16_t* from_por
         DWORD got = 0;
         int r = rm ? rm(s_, &msg, &got, nullptr, nullptr) : SOCKET_ERROR;
         n = r == 0 ? (int)got : -1;
+        if (n < 0) {
+            int e = WSAGetLastError();
+            if (e != WSAETIMEDOUT && e != WSAEWOULDBLOCK) {
+                // Stack timestamping is not usable on this system/socket: disable it and use plain recvfrom from now on.
+                want_timestamps_ = false;
+                fl = sizeof from;
+                n = (int)::recvfrom(s_, (char*)buf, len, 0, (sockaddr*)&from, &fl);
+                if (rx_mono_ns) *rx_mono_ns = mono_ns();
+                goto done_recv;
+            }
+        }
         int64_t now = mono_ns();
         if (n > 0 && rx_mono_ns) {
             *rx_mono_ns = now;
@@ -424,6 +435,9 @@ int UdpSocket::recv(void* buf, int len, std::string* from_ip, uint16_t* from_por
         n = (int)::recvfrom(s_, (char*)buf, len, 0, (sockaddr*)&from, &fl);
         if (rx_mono_ns) *rx_mono_ns = mono_ns();
     }
+#ifdef _WIN32
+done_recv:
+#endif
     if (n < 0) {
         int e = net_last_error();
 #ifdef _WIN32

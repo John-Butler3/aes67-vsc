@@ -53,6 +53,9 @@ public:
     uint32_t sync_count() const { return sync_count_.load(); }
     uint32_t outlier_count() const { return outlier_count_.load(); }
     bool stack_timestamps() const { return ev_.has_timestamping(); }
+    // What PTP traffic is on the wire (any version / domain), e.g. "PTPv2 domain 0: 3 sources; PTPv1 (Dante native): 1 source".
+    std::string seen_summary() const;
+    bool anything_seen() const;
 
     // Direct servo access for tests.
     void servo_reset();
@@ -114,6 +117,10 @@ private:
     // (least delayed on its way to us) is the trustworthy one
     std::array<int64_t, 8> ewin_{}; int ewin_n_ = 0, ewin_i_ = 0, since_best_ = 0;
     std::map<std::array<uint8_t, 10>, int64_t> sync_sources_;   // port id -> last Sync seen (for masters that never Announce)
+    struct Seen { uint32_t packets = 0; int64_t last_mono = 0; std::map<std::string, int> sources; };
+    std::map<int, Seen> seen_;            // key = version * 256 + domain (domain 0 for v1)
+    int64_t last_any_rx_mono_ = 0, last_rejoin_mono_ = 0, last_diag_log_mono_ = 0;
+    void note_seen(const uint8_t* b, int n, int64_t rx_mono, const std::string& from);
     bool is_master_ = false;
     bool have_master_ = false;
     ForeignMaster cur_master_;

@@ -188,6 +188,15 @@ programme audio rather than speech.
   energy-saving options on the NIC) or a non-PTP-aware network path. The driver only reports
   "locked" after the error has stayed small for a second and only drops it after three bad
   seconds, so an occasional noisy timestamp does not show as a sync loss.
+* **"No PTP master found" although one is running.** Open the Status page: the clock row
+  now lists what PTP traffic is actually seen on the chosen interface. Typical findings:
+  *PTPv1 (Dante native)* means the Dante device is not in AES67 mode (enable it in Dante
+  Controller; AES67 needs PTPv2); *PTPv2 domain 4* while we are on domain 0 means the domain
+  setting must match (the SDP import sets it automatically when the SDP carries it); *no PTP
+  packets at all* points at the wrong network interface, the Windows Firewall (inbound UDP
+  319/320 for the host process; install.bat adds a rule) or a switch that does not forward
+  multicast 224.0.1.129 to this port. `aes67vsc ptp-scan 10` prints every PTP talker with
+  version, domain, identity and priorities (stop the driver/bridge first so the ports are free).
 * **Stream arrives for a few minutes, then stops, or comes and goes.** Managed switches with
   IGMP snooping but no IGMP querier forget multicast memberships after a few minutes. Enable a
   querier on the switch (or disable snooping on a small network). The driver re-joins the

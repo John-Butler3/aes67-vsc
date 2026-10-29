@@ -8,7 +8,7 @@ namespace aes67 {
 #pragma pack(push, 1)
 struct StatusBlock {
     uint32_t magic = 0x41453637;   // 'AE67'
-    uint32_t version = 2;
+    uint32_t version = 3;
     uint32_t pid = 0;
     int64_t  updated_ms = 0;        // wall clock ms when written
     uint32_t engine_running = 0;
@@ -29,7 +29,7 @@ struct StatusBlock {
     uint32_t periods = 0;
     uint32_t late_periods = 0;      // periods delivered > 1 ptime late
     char     local_ip[16] = {0};
-    char     message[96] = {0};     // last error / info
+    char     message[160] = {0};    // last error / info
     int64_t  ptp_jitter_ns = 0;     // smoothed |servo error| (v2)
 };
 #pragma pack(pop)
